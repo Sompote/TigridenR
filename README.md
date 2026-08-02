@@ -1,61 +1,64 @@
-# Tigriden — Terminal for Agentic Coding
+# TigridenR — Terminal for Agentic Coding
 
-![Version](https://img.shields.io/badge/version-0.1.1-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
+![Version](https://img.shields.io/badge/version-0.1.0-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 
-**A tiny desktop IDE built for one job: supervising AI coding agents.**
+**A tiny desktop IDE built for one job: supervising AI coding agents — from your desk or your phone.**
 
-Run `claude`, `codex`, `gemini` — any terminal agent — each in its own folder, side by side. Every workspace gets an embedded terminal, a live file tree, and a lightweight code editor so you can watch and steer what your agents build. No run/debug tooling, no chat panel, no LSP: the agents do the heavy lifting, Tigriden gives you eyes and hands.
+Run `claude`, `codex`, `gemini` — any terminal agent — each in its own folder, side by side. Every workspace gets an embedded terminal, a live file tree, and a lightweight code editor so you can watch and steer what your agents build. Leave the desk and keep steering from a browser: TigridenR mirrors its terminals to any device on your Tailscale network, phone included. No run/debug tooling, no chat panel, no LSP: the agents do the heavy lifting, TigridenR gives you eyes and hands.
 
-Written in pure Rust. **~10 MB binary, ~40 MB RAM.**
+Written in pure Rust. **~13 MB binary, ~40 MB RAM.**
 
-![Tigriden supervising an agent: the viewer shows a chart the agent produced while the agent CLI runs in one of three terminal tabs below](assets/screenshot.png)
+![TigridenR supervising an agent: the viewer shows a chart the agent produced while the agent CLI runs in one of three terminal tabs below](assets/screenshot.png)
 
 *Above: a real session — the agent's workspace file tree on the left, the built-in viewer inspecting a chart the agent just generated, and the agent CLI running in one of three terminal tabs below.*
 
 ## Why
 
-Agentic coding means running several agents in several folders and checking in on them. A full IDE is overkill for that; a bare terminal multiplexer gives you no file browser and no editor. Tigriden is the minimal middle: **one session per folder — agent, files, editor, and change tracking together.**
+Agentic coding means running several agents in several folders and checking in on them. A full IDE is overkill for that; a bare terminal multiplexer gives you no file browser and no editor. TigridenR is the minimal middle: **one session per folder — agent, files, editor, and change tracking together** — plus a web mirror so checking in doesn't require being at the machine.
 
 ## Features
 
 - **One-click agents** — preset buttons type the agent command into the terminal for you (fully configurable).
 - **Multiple terminals per folder** — the `+` tab spawns extra shells in the same workspace, so one agent can run while you use a second terminal for git, tests, or another agent.
 - **Real terminal** — VTE-compliant emulation ([alacritty_terminal](https://crates.io/crates/alacritty_terminal) + a real PTY). TUIs like `vim`, `top`, and the Claude Code interface just work, including bracketed paste and truecolor. Select with the mouse and Cmd+C to copy out; Cmd+V pastes text in, and image paste into Claude Code works with Ctrl+V (the agent reads your clipboard directly).
+- **Remote web access** — control your terminals from any browser, phone included. **File ▸ Remote Access…** starts a local web server that mirrors the live terminals (tmux-style shared view: type on your phone, see it on the desktop and vice versa), the agent sidebar, terminal tabs, and preset buttons. Secured by [Tailscale](https://tailscale.com): the server only ever binds `127.0.0.1`, and TigridenR publishes it at `https://<machine>.<tailnet>.ts.net` via `tailscale serve`. Also runs fully headless (`tigridenr --headless`) on a display-less machine.
 - **Live file tree** — gitignore-aware, refreshes automatically as agents create and delete files. Right-click any entry for New File/Folder, Reveal in Finder, Open in Default App, Copy (Relative) Path, Duplicate, Rename, and Move to Trash.
-- **File change tracking & rollback** *(new in 0.1.1)* — **File ▸ Show Changes Panel** adds a live **Changes (N)** list under each folder showing every file the agent has modified/added/deleted since the baseline, updated automatically within ~1 s of a write. Click a row for a syntax-highlighted diff; right-click ▸ **Discard Changes…** reverts one file, the **↺** button (or **Discard All Changes…**) reverts everything — always behind a confirmation. Two modes, picked automatically: folders with git compare against the last commit; folders **without git get invisible shadow snapshots** (stored in the app's data dir — your folder stays untouched, the agent never sees them). Off by default with zero overhead; toggling on snapshots "now" as the baseline.
-- **Multiple windows & agent teams** *(new in 0.1.1)* — **File ▸ New Window** opens an independent window with its own folders, running in parallel. Define named preset groups (`[[teams]]` in config.toml) and pick one per window to give different windows different agent buttons.
+- **File change tracking & rollback** — **File ▸ Show Changes Panel** adds a live **Changes (N)** list under each folder showing every file the agent has modified/added/deleted since the baseline, updated automatically within ~1 s of a write. Click a row for a syntax-highlighted diff; right-click ▸ **Discard Changes…** reverts one file, the **↺** button (or **Discard All Changes…**) reverts everything — always behind a confirmation. Two modes, picked automatically: folders with git compare against the last commit; folders **without git get invisible shadow snapshots** (stored in the app's data dir — your folder stays untouched, the agent never sees them). Off by default with zero overhead; toggling on snapshots "now" as the baseline.
+- **Multiple windows & agent teams** — **File ▸ New Window** opens an independent window with its own folders, running in parallel. Define named preset groups (`[[teams]]` in config.toml) and pick one per window to give different windows different agent buttons.
 - **Drag & drop files** — drop any file from Finder onto the window and its (shell-quoted) path is typed into the terminal, so you can attach files to an agent prompt the same way as in a native terminal.
 - **Built-in editor** — syntax highlighting for 40+ languages ([cosmic-text](https://crates.io/crates/cosmic-text) + syntect), edit and Cmd+S save. When an agent edits the open file on disk, it reloads automatically (or asks, if you have unsaved changes).
 - **File viewers** — images (png/jpg/gif/webp/bmp/tiff), Markdown rendered with headings, code blocks and inline pictures, CSV/TSV as an aligned table, and PDF text extraction. A header button toggles Markdown/CSV between the rendered view and editable source.
 - **Per-folder sessions** — each workspace keeps its own shell, tree, and open file; switching is instant.
 - **Recent folders** — every folder you add is remembered permanently; reopen from the ⟳ button or **File ▸ Open Recent**, even after removing it from the workbench.
-- **Native menu bar** — File (Add Folder ⌘O, New Terminal ⌘T, Show/Hide Changes Panel, Open Recent, New Window ▸ team, Save ⌘S, Close Terminal ⌘W, Close Folder ⇧⌘W) and Edit (Copy/Paste/Select All) menus, routed to whichever pane has focus.
+- **Native menu bar** — File (Add Folder ⌘O, New Terminal ⌘T, Show/Hide Changes Panel, Remote Access…, Open Recent, New Window ▸ team, Save ⌘S, Close Terminal ⌘W, Close Folder ⇧⌘W) and Edit (Copy/Paste/Select All) menus, routed to whichever pane has focus.
 - **Persistent** — folders, active session, and layout are restored on relaunch (fresh shells each time, by design).
-- **Small on purpose** — no webview, no Electron, no C regex libraries. Slint UI with both panes rasterized straight to pixel buffers.
+- **Small on purpose** — no webview, no Electron, no C regex libraries. Slint UI with both panes rasterized straight to pixel buffers; the web client is plain HTML/CSS/JS + a vendored xterm.js, embedded in the binary.
 
 ## Quick install (macOS)
 
-No Rust needed — grab the prebuilt app from the [latest release](https://github.com/Sompote/Tigriden/releases/latest):
+No Rust needed — grab the prebuilt app from the [latest release](https://github.com/Sompote/TigridenR/releases/latest):
 
-1. Download **`Tigriden-0.1.1-macos-universal.app.zip`** (one download for both Apple Silicon and Intel).
-2. Unzip and drag **Tigriden.app** into **/Applications**.
+1. Download **`TigridenR-0.1.0-macos-universal.app.zip`** (one download for both Apple Silicon and Intel).
+2. Unzip and drag **TigridenR.app** into **/Applications**.
 3. First launch only: the app isn't notarized, so **right-click → Open → Open**, or run:
 
    ```sh
-   xattr -d com.apple.quarantine /Applications/Tigriden.app
+   xattr -d com.apple.quarantine /Applications/TigridenR.app
    ```
 
-Prefer a bare binary? The release also ships `tigriden-0.1.1-macos-arm64.tar.gz` (Apple Silicon) and `tigriden-0.1.1-macos-x86_64.tar.gz` (Intel) — untar and run `./tigriden`.
+Prefer a bare binary? The release also ships `tigridenr-0.1.0-macos-arm64.tar.gz` (Apple Silicon) and `tigridenr-0.1.0-macos-x86_64.tar.gz` (Intel) — untar and run `./tigridenr`.
 
 <details>
 <summary><b>Build from source</b> (stable Rust required)</summary>
 
 ```sh
-git clone https://github.com/Sompote/Tigriden.git
-cd Tigriden
+git clone https://github.com/Sompote/TigridenR.git
+cd TigridenR
 cargo build --release
-./target/release/tigriden        # or ./bundle/make-app.sh for dist/Tigriden.app
+./target/release/tigridenr        # or ./bundle/make-app.sh for dist/TigridenR.app
 ```
+
+Building without remote access (smaller, local-only): `cargo build --release --no-default-features`.
 
 macOS is the primary target; Linux/Windows are untested but the stack is cross-platform.
 </details>
@@ -74,12 +77,39 @@ macOS is the primary target; Linux/Windows are untested but the stack is cross-p
 1. **File ▸ Show Changes Panel** — a **Changes (N)** section appears under each folder in the sidebar (off by default; it always starts off on launch).
 2. Tracking mode is chosen automatically per folder:
    - **Git folders** compare against the last commit — commit in the terminal to accept work and reset the list to zero.
-   - **Folders without git** get an invisible **shadow snapshot** taken the moment you enable the panel (stored under `~/Library/Application Support/tigriden/snapshots/`; no `.git` appears in your project). Re-enabling the panel re-snapshots "now".
+   - **Folders without git** get an invisible **shadow snapshot** taken the moment you enable the panel (stored under `~/Library/Application Support/tigridenr/snapshots/`; no `.git` appears in your project). Re-enabling the panel re-snapshots "now".
 3. As the agent works, changed files appear within ~1 s as `M` (modified) / `A` (added) / `D` (deleted) rows — the count is files, not edits.
 4. **Click a row** to see the accumulated diff against the baseline; the **File** chip jumps to the editable file.
 5. Don't like a change? **Right-click the row ▸ Discard Changes…** restores that file to the baseline (new files are deleted, deleted files come back). The **↺** button on the Changes header — or right-click ▸ **Discard All Changes…** — reverts the whole run. Both ask for confirmation first.
 
 Detection is watcher-driven (no polling): bursts of writes are coalesced for 250 ms, `git status` runs on a background thread, and nothing at all runs while the panel is off or the agent is idle.
+
+### Remote access from a browser (desktop or phone)
+
+TigridenR can mirror its terminals to a web page — same theme, same sidebar, same preset buttons, with the terminal rendered by xterm.js. The desktop and every browser client share the same shells: output mirrors everywhere and anyone attached can type.
+
+**Enable from the app:** **File ▸ Remote Access… ▸ Enable.** The dialog shows the status and the URL to open. With [Tailscale](https://tailscale.com) installed and logged in, that's `https://<machine>.<tailnet>.ts.net` — open it on any device in your tailnet (install the Tailscale app on your phone and log into the same account). Without Tailscale the server still runs, but only on `http://127.0.0.1:<port>` of the machine itself.
+
+**Enable from config** (`config.toml`):
+
+```toml
+[remote]
+enabled = true   # start the server on launch
+port = 8620
+```
+
+**Headless** — run the server with no window at all (e.g. a Mac mini over SSH):
+
+```sh
+tigridenr --headless             # serves the folders from the last GUI session
+tigridenr --headless --port 9000
+```
+
+In headless mode the browser drives the terminal size (rotate your phone, the PTY follows). When the GUI is running, the desktop pane owns the grid and browsers mirror it at whatever font size fits.
+
+**Security model:** the HTTP/WebSocket server never binds anything but loopback. Remote reachability comes exclusively from `tailscale serve`, which terminates HTTPS with a real certificate and only admits devices in your tailnet. Turning remote access off runs `tailscale serve --https=443 off` and stops the server. There is no password of its own — access control *is* your tailnet; anyone who can open the page has full shell access as your user account.
+
+Notes: enabling remote access re-writes `config.toml` (hand-added comments are lost); the flags `--no-remote` (force off) and `--port N` override the config for one launch.
 
 ### Keys
 
@@ -90,7 +120,7 @@ Detection is watcher-driven (no polling): bursts of writes are coalesced for 250
 
 ## Configuration
 
-`~/Library/Application Support/tigriden/config.toml`, created on first run:
+`~/Library/Application Support/tigridenr/config.toml`, created on first run:
 
 ```toml
 theme = "dark"          # "dark" | "light"
@@ -118,6 +148,11 @@ name = "reviewers"
 label = "claude-review"
 command = "claude /review"
 send_enter = true
+
+# Optional: remote web access (see "Remote access" above).
+[remote]
+enabled = false
+port = 8620
 ```
 
 Runtime state (restored folders, split position) lives next to it in `state.toml`; shadow snapshots for the Changes panel live in `snapshots/`.
@@ -133,11 +168,13 @@ Slint provides only the chrome (sidebar, layout, splitter). The two hard parts a
 
 Only the PTY reader threads run in the background; rendering and editing happen on the UI thread with coalesced repaints.
 
+Remote access (`src/remote/`, behind the default-on `remote` feature) adds a loopback-only HTTP/WebSocket server: the PTY reader thread tees raw output to attached browser clients, and a new client gets the current screen replayed as ANSI straight from the alacritty grid (scrollback included) — so attaching mid-`vim` just works. Browser input feeds the same PTY writer channel the desktop uses. The web page (HTML/CSS/JS + vendored [xterm.js](https://github.com/xtermjs/xterm.js)) is embedded in the binary; no CDN, works on a tailnet without internet.
+
 `vendor/cosmic-text/` is a verbatim copy of cosmic-text 0.19 with one change: its syntect dependency uses the pure-Rust `fancy-regex` engine instead of the oniguruma C library (smaller binary, no C build dependency).
 
 ### Debug builds
 
-`cargo build --features framedump`, then run with `TIGRIDEN_DUMP=/tmp/frames` to dump both panes as PNGs. `TIGRIDEN_TEST_INPUT='claude\r'` and `TIGRIDEN_TEST_OPEN=path` script the first session for headless testing.
+`cargo build --features framedump`, then run with `TIGRIDENR_DUMP=/tmp/frames` to dump both panes as PNGs. `TIGRIDENR_TEST_INPUT='claude\r'` and `TIGRIDENR_TEST_OPEN=path` script the first session for headless testing.
 
 ## Roadmap / known limitations (v1)
 

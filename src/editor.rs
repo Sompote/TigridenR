@@ -141,7 +141,7 @@ impl EditorState {
             return Ok(());
         }
         let text = self.text();
-        let tmp = self.path.with_extension("tigriden-tmp");
+        let tmp = self.path.with_extension("tigridenr-tmp");
         std::fs::write(&tmp, &text).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &self.path).map_err(|e| e.to_string())?;
         self.dirty = false;

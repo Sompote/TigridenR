@@ -21,7 +21,7 @@ use crate::term::{TermHooks, TermSession};
 use crate::{MainWindow, PresetItem, TreeRow};
 
 static SYNTAX_SYSTEM: OnceLock<SyntaxSystem> = OnceLock::new();
-static NEXT_TERM_ID: AtomicU64 = AtomicU64::new(1);
+pub(crate) static NEXT_TERM_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_APP_ID: AtomicU64 = AtomicU64::new(1);
 
 fn syntax_system() -> &'static SyntaxSystem {
@@ -112,7 +112,7 @@ enum NameAction {
 
 #[cfg(feature = "framedump")]
 fn dump_frame(name: &str, buffer: &slint::SharedPixelBuffer<slint::Rgba8Pixel>) {
-    let Ok(dir) = std::env::var("TIGRIDEN_DUMP") else { return };
+    let Ok(dir) = std::env::var("TIGRIDENR_DUMP") else { return };
     let path = std::path::Path::new(&dir).join(format!("{name}.png"));
     let _ = std::fs::create_dir_all(&dir);
     let file = match std::fs::File::create(&path) {
@@ -145,6 +145,9 @@ pub struct App {
     active: usize,
     recents: Vec<PathBuf>,
     row_map: Vec<RowTarget>,
+    /// Sidebar rows mirrored to remote web clients, rebuilt with the tree.
+    #[cfg(feature = "remote")]
+    remote_tree: Vec<crate::remote::state::UiTreeRow>,
     font_system: FontSystem,
     swash_cache: SwashCache,
     term_renderer: Option<TermRenderer>,
@@ -187,7 +190,7 @@ impl App {
             .collect();
         ui.set_team_names(ModelRc::new(VecModel::from(team_names)));
         if let Some(team) = team.and_then(|i| config.teams.get(i)) {
-            ui.set_window_title(SharedString::from(format!("Tigriden — {}", team.name)));
+            ui.set_window_title(SharedString::from(format!("TigridenR — {}", team.name)));
         }
 
         Self {
@@ -202,6 +205,8 @@ impl App {
             active: 0,
             recents,
             row_map: Vec::new(),
+            #[cfg(feature = "remote")]
+            remote_tree: Vec::new(),
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
             term_renderer: None,
@@ -280,6 +285,7 @@ impl App {
         let hooks = Self::make_hooks(self.id, id, frame_pending.clone());
 
         match TermSession::spawn(
+            id,
             root,
             cols,
             rows,
@@ -290,7 +296,7 @@ impl App {
         ) {
             Ok(term) => Some(TermHandle { id, term, frame_pending }),
             Err(err) => {
-                eprintln!("tigriden: {err}");
+                eprintln!("tigridenr: {err}");
                 None
             }
         }
@@ -327,13 +333,13 @@ impl App {
             self.persist();
         }
 
-        // Test hooks: type $TIGRIDEN_TEST_INPUT into the first session's
-        // terminal / open $TIGRIDEN_TEST_OPEN in its editor shortly after
+        // Test hooks: type $TIGRIDENR_TEST_INPUT into the first session's
+        // terminal / open $TIGRIDENR_TEST_OPEN in its editor shortly after
         // launch (escape \r for Enter).
         #[cfg(feature = "framedump")]
         if self.sessions.len() == 1 {
             let app_id = self.id;
-            if let Ok(cmds) = std::env::var("TIGRIDEN_TEST_INPUT") {
+            if let Ok(cmds) = std::env::var("TIGRIDENR_TEST_INPUT") {
                 // Stages separated by \\t are sent 3 s apart.
                 for (i, stage) in cmds.split("\\t").enumerate() {
                     let bytes = stage.replace("\\r", "\r").into_bytes();
@@ -349,7 +355,7 @@ impl App {
                     });
                 }
             }
-            if let Ok(mode) = std::env::var("TIGRIDEN_TEST_NEWTERM") {
+            if let Ok(mode) = std::env::var("TIGRIDENR_TEST_NEWTERM") {
                 slint::Timer::single_shot(std::time::Duration::from_millis(2500), move || {
                     with_app_id(app_id, |app| app.new_terminal_active());
                 });
@@ -359,7 +365,7 @@ impl App {
                     });
                 }
             }
-            if std::env::var("TIGRIDEN_TEST_SELECT").is_ok() {
+            if std::env::var("TIGRIDENR_TEST_SELECT").is_ok() {
                 slint::Timer::single_shot(std::time::Duration::from_millis(3000), move || {
                     with_app_id(app_id, |app| {
                         app.term_mouse(0, 5.0, 5.0);
@@ -374,7 +380,7 @@ impl App {
                     });
                 });
             }
-            if std::env::var("TIGRIDEN_TEST_PASTE").is_ok() {
+            if std::env::var("TIGRIDENR_TEST_PASTE").is_ok() {
                 slint::Timer::single_shot(std::time::Duration::from_millis(3000), move || {
                     with_app_id(app_id, |app| {
                         let handled = app.term_key(
@@ -385,12 +391,12 @@ impl App {
                     });
                 });
             }
-            if let Ok(path) = std::env::var("TIGRIDEN_TEST_DROP") {
+            if let Ok(path) = std::env::var("TIGRIDENR_TEST_DROP") {
                 slint::Timer::single_shot(std::time::Duration::from_millis(3000), move || {
                     with_app_id(app_id, |app| app.file_dropped(std::path::PathBuf::from(&path)));
                 });
             }
-            if std::env::var("TIGRIDEN_TEST_CTX").is_ok() {
+            if std::env::var("TIGRIDENR_TEST_CTX").is_ok() {
                 slint::Timer::single_shot(std::time::Duration::from_millis(3000), move || {
                     with_app_id(app_id, |app| {
                         app.tree_context(1, 0); // New Folder on session header
@@ -402,7 +408,7 @@ impl App {
                     });
                 });
             }
-            if let Ok(path) = std::env::var("TIGRIDEN_TEST_OPEN") {
+            if let Ok(path) = std::env::var("TIGRIDENR_TEST_OPEN") {
                 slint::Timer::single_shot(std::time::Duration::from_millis(1500), move || {
                     with_app_id(app_id, |app| app.open_file(0, std::path::PathBuf::from(&path)));
                 });
@@ -672,7 +678,23 @@ impl App {
                 });
             }
         }
+        #[cfg(feature = "remote")]
+        {
+            self.remote_tree = rows
+                .iter()
+                .map(|r| crate::remote::state::UiTreeRow {
+                    kind: r.kind,
+                    indent: r.indent,
+                    name: r.name.to_string(),
+                    expanded: r.expanded,
+                    session: r.session,
+                    row_id: r.row_id,
+                })
+                .collect();
+        }
         ui.set_tree_rows(ModelRc::new(VecModel::from(rows)));
+        #[cfg(feature = "remote")]
+        self.publish_remote_state();
     }
 
     // ----- file watching -----
@@ -853,7 +875,7 @@ impl App {
                 self.update_chrome();
             }
             Err(err) => {
-                eprintln!("tigriden: {err}");
+                eprintln!("tigridenr: {err}");
                 if let Some(ui) = self.ui() {
                     ui.set_editor_title(SharedString::from(err));
                 }
@@ -928,7 +950,7 @@ impl App {
                 self.render_editor();
                 self.update_chrome();
             }
-            Err(err) => eprintln!("tigriden: {err}"),
+            Err(err) => eprintln!("tigridenr: {err}"),
         }
     }
 
@@ -976,7 +998,7 @@ impl App {
                 self.render_editor();
                 self.update_chrome();
             }
-            Err(err) => eprintln!("tigriden: {err}"),
+            Err(err) => eprintln!("tigridenr: {err}"),
         }
     }
 
@@ -1042,7 +1064,7 @@ impl App {
         let Some(session) = self.sessions.get_mut(self.active) else { return };
         let Some(editor) = session.editor.as_mut() else { return };
         if let Err(err) = editor.save() {
-            eprintln!("tigriden: save failed: {err}");
+            eprintln!("tigridenr: save failed: {err}");
         }
         self.render_editor();
         self.update_chrome();
@@ -1457,7 +1479,7 @@ impl App {
                     &path.parent().unwrap_or(Path::new(".")).join(format!("{stem} copy{ext}")),
                 );
                 if let Err(err) = Self::copy_recursive(&path, &target) {
-                    eprintln!("tigriden: duplicate failed: {err}");
+                    eprintln!("tigridenr: duplicate failed: {err}");
                 }
                 let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
                 self.refresh_dir(idx, &parent);
@@ -1476,7 +1498,7 @@ impl App {
                 let Some(trash) = dirs::home_dir().map(|h| h.join(".Trash")) else { return };
                 let target = Self::unique_path(&trash.join(path.file_name().unwrap_or_default()));
                 if let Err(err) = std::fs::rename(&path, &target) {
-                    eprintln!("tigriden: trash failed: {err}");
+                    eprintln!("tigridenr: trash failed: {err}");
                     return;
                 }
                 if let Some(session) = self.sessions.get_mut(idx) {
@@ -1515,7 +1537,7 @@ impl App {
                 let target = dir.join(name);
                 if !target.exists() {
                     if let Err(err) = std::fs::write(&target, "") {
-                        eprintln!("tigriden: create file failed: {err}");
+                        eprintln!("tigridenr: create file failed: {err}");
                     } else {
                         self.refresh_dir(idx, &dir);
                         self.really_open_file(idx, target);
@@ -1524,7 +1546,7 @@ impl App {
             }
             NameAction::NewFolder(idx, dir) => {
                 if let Err(err) = std::fs::create_dir_all(dir.join(name)) {
-                    eprintln!("tigriden: create folder failed: {err}");
+                    eprintln!("tigridenr: create folder failed: {err}");
                 }
                 self.refresh_dir(idx, &dir);
             }
@@ -1532,7 +1554,7 @@ impl App {
                 let target = path.parent().unwrap_or(Path::new(".")).join(name);
                 if target != path && !target.exists() {
                     if let Err(err) = std::fs::rename(&path, &target) {
-                        eprintln!("tigriden: rename failed: {err}");
+                        eprintln!("tigridenr: rename failed: {err}");
                     } else {
                         if let Some(editor) = self.sessions.get_mut(idx).and_then(|s| s.editor.as_mut())
                         {
@@ -1808,10 +1830,139 @@ impl App {
                 ui.set_active_term(0);
             }
         }
+        #[cfg(feature = "remote")]
+        self.publish_remote_state();
+    }
+
+    /// Mirrors the chrome state (sessions, tabs, presets, tree) to remote web
+    /// clients. Primary window only — same ownership rule as persist().
+    #[cfg(feature = "remote")]
+    fn publish_remote_state(&self) {
+        if !self.is_primary {
+            return;
+        }
+        let state = crate::remote::state::UiState {
+            active_session: self.active,
+            presets: self.presets.iter().map(|p| p.label.clone()).collect(),
+            sessions: self
+                .sessions
+                .iter()
+                .map(|s| crate::remote::state::UiSession {
+                    name: s.name.clone(),
+                    root: s.root.display().to_string(),
+                    terms: s.terms.iter().map(|t| t.id).collect(),
+                    active_term: s.active_term,
+                    exited: s
+                        .terms
+                        .iter()
+                        .map(|t| t.term.exited.load(Ordering::Acquire))
+                        .collect(),
+                })
+                .collect(),
+            tree: self.remote_tree.clone(),
+        };
+        crate::remote::state::HUB.publish(&state);
     }
 
     pub fn split_changed(&mut self) {
         self.persist();
+    }
+
+    // ----- remote access -----
+
+    /// File ▸ Remote Access… — opens the dialog with fresh status.
+    #[cfg(feature = "remote")]
+    pub fn menu_remote(&mut self) {
+        let Some(ui) = self.ui() else { return };
+        let active = crate::remote::is_active();
+        ui.set_remote_enabled(active);
+        if !active {
+            ui.set_remote_status(SharedString::from(
+                "Off. Enable to control this window's terminals from a browser \
+                 (secured via Tailscale).",
+            ));
+            ui.set_remote_url(SharedString::default());
+        }
+        ui.set_remote_dialog_visible(true);
+    }
+
+    #[cfg(feature = "remote")]
+    pub fn remote_dialog_close(&mut self) {
+        if let Some(ui) = self.ui() {
+            ui.set_remote_dialog_visible(false);
+        }
+    }
+
+    #[cfg(feature = "remote")]
+    pub fn remote_toggle(&mut self) {
+        if crate::remote::is_active() {
+            self.remote_disable(true)
+        } else {
+            self.remote_enable(true)
+        }
+    }
+
+    /// Starts the loopback server, then brings up `tailscale serve` on a
+    /// worker thread. `persist` is false during launch auto-start.
+    #[cfg(feature = "remote")]
+    pub fn remote_enable(&mut self, persist: bool) {
+        let port = self.config.remote.port;
+        let host = std::sync::Arc::new(crate::remote::host::GuiHost { app_id: self.id });
+        if let Err(err) = crate::remote::activate(port, host) {
+            if let Some(ui) = self.ui() {
+                ui.set_remote_status(SharedString::from(format!("Failed to start: {err}")));
+            }
+            return;
+        }
+        if persist {
+            self.config.remote.enabled = true;
+            config::save_config(&self.config);
+        }
+        // Publish immediately so a client connecting before the next UI
+        // mutation still gets a state snapshot.
+        self.publish_remote_state();
+        if let Some(ui) = self.ui() {
+            ui.set_remote_enabled(true);
+            ui.set_remote_status(SharedString::from("Starting tailscale serve…"));
+            ui.set_remote_url(SharedString::from(format!("http://127.0.0.1:{port}")));
+        }
+        let app_id = self.id;
+        std::thread::spawn(move || {
+            let status = crate::remote::tailscale::enable(port);
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app_id(app_id, |app| app.remote_ts_status(status, port));
+            });
+        });
+    }
+
+    #[cfg(feature = "remote")]
+    fn remote_ts_status(&mut self, status: crate::remote::tailscale::TsStatus, port: u16) {
+        let Some(ui) = self.ui() else { return };
+        use crate::remote::tailscale::TsStatus;
+        ui.set_remote_status(SharedString::from(status.label()));
+        match status {
+            TsStatus::Serving { url } => ui.set_remote_url(SharedString::from(url)),
+            // Local server keeps running; useful on the machine itself and
+            // for LAN-free testing.
+            _ => ui.set_remote_url(SharedString::from(format!(
+                "http://127.0.0.1:{port} (this machine only)"
+            ))),
+        }
+    }
+
+    #[cfg(feature = "remote")]
+    fn remote_disable(&mut self, persist: bool) {
+        crate::remote::deactivate();
+        std::thread::spawn(crate::remote::tailscale::disable);
+        if persist {
+            self.config.remote.enabled = false;
+            config::save_config(&self.config);
+        }
+        if let Some(ui) = self.ui() {
+            ui.set_remote_enabled(false);
+            ui.set_remote_status(SharedString::from("Off."));
+            ui.set_remote_url(SharedString::default());
+        }
     }
 
     fn persist(&mut self) {

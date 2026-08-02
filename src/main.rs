@@ -3,6 +3,8 @@ mod config;
 mod editor;
 mod git;
 mod paint;
+#[cfg(feature = "remote")]
+mod remote;
 mod session;
 mod term;
 mod tree;
@@ -44,6 +46,8 @@ fn open_window(config: config::Config, recents: Vec<PathBuf>, opts: WindowOpts) 
         ui.set_split_ratio(ratio.clamp(0.15, 0.85));
     }
 
+    #[cfg(feature = "remote")]
+    let auto_remote = opts.is_primary && config.remote.enabled;
     let app = Rc::new(RefCell::new(App::new(
         &ui,
         config.clone(),
@@ -64,6 +68,12 @@ fn open_window(config: config::Config, recents: Vec<PathBuf>, opts: WindowOpts) 
         }
     }
     with_app_id(app_id, |app| app.set_active(opts.restore_active));
+
+    // [remote] enabled = true in config.toml: bring the server up on launch.
+    #[cfg(feature = "remote")]
+    if auto_remote {
+        with_app_id(app_id, |app| app.remote_enable(false));
+    }
 
     ui.show().expect("failed to show window");
 }
@@ -116,6 +126,12 @@ fn wire_callbacks(ui: &MainWindow, app_id: u64, config: config::Config) {
     ui.on_toggle_changes(move || with_app_id(app_id, |app| app.toggle_changes()));
     ui.on_banner_primary(move || with_app_id(app_id, |app| app.banner_primary()));
     ui.on_banner_secondary(move || with_app_id(app_id, |app| app.banner_secondary()));
+    #[cfg(feature = "remote")]
+    {
+        ui.on_menu_remote(move || with_app_id(app_id, |app| app.menu_remote()));
+        ui.on_remote_toggle(move || with_app_id(app_id, |app| app.remote_toggle()));
+        ui.on_remote_dialog_close(move || with_app_id(app_id, |app| app.remote_dialog_close()));
+    }
 
     ui.on_term_key(move |text, ctrl, alt, meta, shift| {
         let mut handled = false;
@@ -169,11 +185,42 @@ fn wire_callbacks(ui: &MainWindow, app_id: u64, config: config::Config) {
 }
 
 fn main() {
-    let (config, malformed_config) = config::load_config();
+    config::migrate_legacy_dir();
+    let (mut config, malformed_config) = config::load_config();
     let state = config::load_state();
 
     if malformed_config {
-        eprintln!("tigriden: config.toml is malformed; using defaults (file left untouched)");
+        eprintln!("tigridenr: config.toml is malformed; using defaults (file left untouched)");
+    }
+
+    // Hand-rolled flags: --headless [--port N] runs the remote server with no
+    // window (and no Slint/winit init, so it works over SSH); --no-remote
+    // forces the server off for this GUI launch; --port overrides the config.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let headless = args.iter().any(|a| a == "--headless");
+    let no_remote = args.iter().any(|a| a == "--no-remote");
+    if let Some(port) = args
+        .windows(2)
+        .find(|w| w[0] == "--port")
+        .and_then(|w| w[1].parse::<u16>().ok())
+    {
+        config.remote.port = port;
+    }
+    if no_remote {
+        config.remote.enabled = false;
+    }
+
+    if headless {
+        #[cfg(feature = "remote")]
+        {
+            let port = config.remote.port;
+            remote::headless::run(config, port);
+        }
+        #[cfg(not(feature = "remote"))]
+        {
+            eprintln!("tigridenr: this build has no remote support (built without the `remote` feature)");
+            std::process::exit(2);
+        }
     }
 
     open_window(

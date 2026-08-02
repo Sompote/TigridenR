@@ -32,6 +32,17 @@ pub struct EventProxy {
     dark: bool,
 }
 
+#[cfg(test)]
+impl EventProxy {
+    pub fn for_tests(
+        input_tx: Sender<Vec<u8>>,
+        hooks: TermHooks,
+        win_size: Arc<Mutex<WindowSize>>,
+    ) -> Self {
+        Self { input_tx, hooks, win_size, dark: true }
+    }
+}
+
 impl EventListener for EventProxy {
     fn send_event(&self, event: Event) {
         match event {
@@ -59,6 +70,7 @@ impl EventListener for EventProxy {
 }
 
 pub struct TermSession {
+    pub id: u64,
     pub term: Arc<FairMutex<Term<EventProxy>>>,
     input_tx: Sender<Vec<u8>>,
     master: Option<Box<dyn MasterPty + Send>>,
@@ -73,6 +85,7 @@ pub struct TermSession {
 
 impl TermSession {
     pub fn spawn(
+        id: u64,
         root: &Path,
         cols: u16,
         rows: u16,
@@ -143,9 +156,12 @@ impl TermSession {
             }
         });
 
+        let taps: Arc<Mutex<Vec<Sender<Vec<u8>>>>> = Arc::new(Mutex::new(Vec::new()));
+
         let reader_term = term.clone();
         let reader_exited = exited.clone();
         let reader_hooks = hooks.clone();
+        let reader_taps = taps.clone();
         let reader_handle = std::thread::spawn(move || {
             let mut processor: Processor = Processor::new();
             let mut buf = [0u8; 65536];
@@ -156,6 +172,14 @@ impl TermSession {
                         {
                             let mut term = reader_term.lock();
                             processor.advance(&mut *term, &buf[..n]);
+                            // Tee to remote subscribers inside the term-lock
+                            // scope so an attach snapshot (which also holds the
+                            // term lock, then taps) never loses or duplicates
+                            // bytes. Lock order everywhere: term, then taps.
+                            let mut taps = reader_taps.lock().unwrap();
+                            if !taps.is_empty() {
+                                taps.retain(|tx| tx.send(buf[..n].to_vec()).is_ok());
+                            }
                         }
                         (reader_hooks.repaint)();
                     }
@@ -165,7 +189,19 @@ impl TermSession {
             (reader_hooks.exited)();
         });
 
+        #[cfg(feature = "remote")]
+        crate::remote::registry::insert(
+            id,
+            crate::remote::registry::Endpoint {
+                term: term.clone(),
+                input_tx: input_tx.clone(),
+                taps: taps.clone(),
+                size: win_size.clone(),
+            },
+        );
+
         Ok(Self {
+            id,
             term,
             input_tx,
             master: Some(pty.master),
@@ -208,6 +244,10 @@ impl TermSession {
     }
 
     pub fn shutdown(&mut self) {
+        // Deregister first: the registry holds an input_tx clone, and the
+        // writer thread only exits once every sender is dropped.
+        #[cfg(feature = "remote")]
+        crate::remote::registry::remove(self.id);
         let _ = self.child.kill();
         let _ = self.child.wait();
         // Dropping the master closes the PTY, which EOFs the reader thread.
@@ -223,6 +263,8 @@ impl TermSession {
 
 impl Drop for TermSession {
     fn drop(&mut self) {
+        #[cfg(feature = "remote")]
+        crate::remote::registry::remove(self.id);
         let _ = self.child.kill();
         let _ = self.child.wait();
     }

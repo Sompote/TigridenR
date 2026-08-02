@@ -1,6 +1,6 @@
 [package]
-name = "tigriden"
-version = "0.1.1"
+name = "tigridenr"
+version = "0.1.0"
 edition = "2021"
 description = "Minimal IDE for supervising AI coding agents: per-folder terminals, file trees, and a lightweight editor."
 license = "MIT"
@@ -33,9 +33,16 @@ pulldown-cmark = { version = "0.13", default-features = false }
 csv = "1.4"
 pdf-extract = "0.12"
 png = { version = "0.18", optional = true }
+tungstenite = { version = "0.24", default-features = false, features = ["handshake"], optional = true }
+serde_json = { version = "1", optional = true }
 
 [features]
-# Debug aid: dump rendered pane frames as PNGs to $TIGRIDEN_DUMP.
+default = ["remote"]
+# Web-based remote access (browser attaches to the live terminals; secured
+# externally via Tailscale). Build with --no-default-features for a
+# local-only binary.
+remote = ["dep:tungstenite", "dep:serde_json"]
+# Debug aid: dump rendered pane frames as PNGs to $TIGRIDENR_DUMP.
 framedump = ["dep:png"]
 
 # cosmic-text pins syntect with default features, which drags in the oniguruma

@@ -6,7 +6,7 @@ use std::process::Command;
 pub enum Tracking {
     /// The folder has its own .git repository.
     Git,
-    /// Tigriden's hidden snapshot repository; the git dir lives in the app's
+    /// TigridenR's hidden snapshot repository; the git dir lives in the app's
     /// data folder, so the project folder itself stays untouched.
     Shadow(PathBuf),
 }
@@ -28,7 +28,7 @@ pub fn detect(root: &Path) -> Option<Tracking> {
     }
     let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let dir = dirs::config_dir()?
-        .join("tigriden")
+        .join("tigridenr")
         .join("snapshots")
         .join(format!("{name}-{:016x}", fnv1a(&root.to_string_lossy())));
     Some(Tracking::Shadow(dir))
@@ -71,9 +71,9 @@ pub fn snapshot_baseline(root: &Path, dir: &Path) {
     let _ = git_cmd(root, &tracking)
         .args([
             "-c",
-            "user.name=tigriden",
+            "user.name=tigridenr",
             "-c",
-            "user.email=snapshot@tigriden.local",
+            "user.email=snapshot@tigridenr.local",
             "commit",
             "-q",
             "-m",

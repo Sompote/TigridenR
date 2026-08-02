@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1e2227">
+<title>TigridenR</title>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <button id="menu-btn" title="Sessions &amp; files">☰</button>
+    <span id="brand">TigridenR</span>
+    <span id="session-name"></span>
+    <span class="spacer"></span>
+    <button id="kbd-btn" title="Show keyboard">⌨</button>
+    <button id="resync-btn" title="Resync terminal">⟳</button>
+    <span id="conn-dot" class="off" title="Connection"></span>
+  </header>
+  <div id="body">
+    <aside id="sidebar">
+      <div id="sidebar-head">AGENTS</div>
+      <div id="tree"></div>
+    </aside>
+    <div id="scrim"></div>
+    <main id="main">
+      <div id="term-wrap"><div id="term"></div></div>
+      <div id="overlay" class="hidden"></div>
+      <footer id="termbar">
+        <div id="tabs"></div>
+        <button id="new-term" title="New terminal">+</button>
+        <div class="divider"></div>
+        <div id="presets"></div>
+      </footer>
+    </main>
+  </div>
+</div>
+<script src="/vendor/xterm.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

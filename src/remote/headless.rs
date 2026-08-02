@@ -51,6 +51,9 @@ pub struct Manager {
     active: usize,
     row_map: Vec<RowTarget>,
     events: Sender<Event>,
+    /// Shared with the PTY threads so OSC color answerbacks use the
+    /// configured theme (fixed for the process in headless mode).
+    theme_index: Arc<std::sync::atomic::AtomicU8>,
 }
 
 impl Manager {
@@ -71,7 +74,7 @@ impl Manager {
             24,
             CELL_PX,
             self.config.scrollback,
-            self.config.theme != "light",
+            self.theme_index.clone(),
             hooks,
         ) {
             Ok(term) => Some(term),
@@ -318,6 +321,9 @@ pub fn run(config: Config, port: u16) -> ! {
     let (events_tx, events_rx) = channel::<Event>();
 
     let mut manager = Manager {
+        theme_index: Arc::new(std::sync::atomic::AtomicU8::new(crate::theme::index_of(
+            &config.theme,
+        ))),
         config: config.clone(),
         sessions: Vec::new(),
         active: 0,

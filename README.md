@@ -32,6 +32,22 @@ The desktop app and every browser client share the **same live shells** — it's
 - **Terminal tabs and preset buttons** — switch folders and shells, open or close terminals, and launch `claude`/`codex`/`gemini` with one tap.
 - A **phone-friendly layout** — drawer sidebar, soft-keyboard button, a ⟳ resync button, and font auto-fit to the host's grid width.
 
+<img src="assets/mobile.png" alt="TigridenR on an iPhone: the agent sidebar button, session name, font size controls and keyboard button along the top, Claude Code running in the terminal, and the terminal tab plus claude/codex/gemini preset buttons along the bottom" width="300" align="right">
+
+### From your phone
+
+The same session, in your pocket — this is Claude Code running on the Mac, driven from an iPhone over Tailscale:
+
+1. **On the Mac** — **Settings** (⌘,) **▸ Remote Access ▸ On**. Copy the `…ts.net` URL it shows.
+2. **On the phone** — open the Tailscale app and connect (same account as the Mac), then open that URL in Safari or Chrome.
+3. Tap **⌨** to raise the keyboard and type — the desktop shows every keystroke, and its output comes straight back.
+
+Around the terminal: **☰** opens the folder sidebar, **A− / A+** size the text (tap the number for auto-fit), **⟳** repaints from the host if a flaky connection leaves the screen stale, and the dot on the right is green while connected. Along the bottom are the terminal tabs, **+** for a new shell, and your agent presets — so you can start `claude` on a folder without touching the Mac.
+
+Add it to your home screen (Safari ▸ Share ▸ **Add to Home Screen**) and it opens like an app — that works best once HTTPS certificates are enabled on your tailnet, which the Tailscale setup section below covers.
+
+<br clear="right">
+
 **Every window can serve its own port.** Turn remote access on per window and give each a different port (Settings ▸ Remote Access), so a "reviewers" window and a "build" window are two separate URLs. A window's page only ever sees that window's folders and shells.
 
 **Turn it on** (one of):

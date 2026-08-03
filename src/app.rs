@@ -103,6 +103,10 @@ pub fn shutdown_all() {
         app.borrow_mut().shutdown();
     }
     WINDOWS.with(|slot| slot.borrow_mut().clear());
+    // Leaving `tailscale serve` pointing at a port nothing listens on turns
+    // the published URL into a 502; tear it down with the app.
+    #[cfg(feature = "remote")]
+    crate::remote::tailscale::disable_if_serving();
 }
 
 fn slint_color(rgb: [u8; 3]) -> slint::Color {

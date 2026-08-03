@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Debug, Clone)]
 pub enum TsStatus {
@@ -102,6 +103,7 @@ pub fn enable(port: u16) -> TsStatus {
         .output();
     match output {
         Ok(out) if out.status.success() => {
+            SERVING.store(true, Ordering::Release);
             TsStatus::Serving { url: format!("{scheme}://{name}"), https }
         }
         Ok(out) => {
@@ -117,6 +119,7 @@ pub fn enable(port: u16) -> TsStatus {
 }
 
 pub fn disable() {
+    SERVING.store(false, Ordering::Release);
     let Some(cli) = find_cli() else { return };
     // Tear down whichever listener was set up.
     for flag in ["--https=443", "--http=80"] {
@@ -124,5 +127,16 @@ pub fn disable() {
             .args(["serve", flag, "off"])
             .stdin(Stdio::null())
             .output();
+    }
+}
+
+/// True once `enable` has published a URL, until `disable` tears it down.
+static SERVING: AtomicBool = AtomicBool::new(false);
+
+/// Cleanup for process exit: only shells out when we actually published a
+/// serve config, so quitting a normal local session costs nothing.
+pub fn disable_if_serving() {
+    if SERVING.load(Ordering::Acquire) {
+        disable();
     }
 }

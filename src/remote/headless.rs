@@ -388,9 +388,40 @@ pub fn run(config: Config, port: u16, folders: Vec<PathBuf>) -> ! {
         eprintln!("tigridenr: {}", status.label());
     });
 
+    install_signal_cleanup();
+
     // Event loop: debounce fs events, republish on demand.
     event_loop(&manager, events_rx)
 }
+
+/// Ctrl-C / SIGTERM must tear down `tailscale serve`, or the published URL
+/// keeps resolving to a port nothing listens on (a bare 502 for whoever opens
+/// the bookmark next).
+#[cfg(unix)]
+fn install_signal_cleanup() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static QUIT: AtomicBool = AtomicBool::new(false);
+
+    extern "C" fn on_signal(_sig: libc::c_int) {
+        // Only async-signal-safe work here; the watcher thread does the rest.
+        QUIT.store(true, Ordering::Release);
+    }
+    unsafe {
+        libc::signal(libc::SIGINT, on_signal as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, on_signal as libc::sighandler_t);
+    }
+    std::thread::spawn(|| loop {
+        if QUIT.load(Ordering::Acquire) {
+            eprintln!("\ntigridenr: stopping, removing tailscale serve config…");
+            super::tailscale::disable_if_serving();
+            std::process::exit(0);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    });
+}
+
+#[cfg(not(unix))]
+fn install_signal_cleanup() {}
 
 fn event_loop(manager: &Arc<Mutex<Manager>>, events: Receiver<Event>) -> ! {
     loop {

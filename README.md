@@ -56,6 +56,8 @@ The desktop app and every browser client share the **same live shells** — it's
 
    `tigridenr --help` lists every flag. In headless mode the *browser* drives the terminal size — rotate your phone and the PTY follows. When the desktop GUI is running, its pane owns the grid and browsers mirror it. Change tracking is always on headless, so the Changes list works from the first connection.
 
+Stopping the server (Ctrl-C, or quitting the app) removes the `tailscale serve` config too, so the published URL never lingers pointing at a dead port.
+
 **Security = Tailscale, by design.** The server never binds anything but `127.0.0.1`. Reachability comes exclusively from `tailscale serve`, which publishes it at `https://<machine>.<tailnet>.ts.net` with a real TLS certificate, admitting only devices logged into your tailnet (install the Tailscale app on your phone, same account, done). Disabling remote access tears the serve config down and stops the server. There is no separate password — access control *is* your tailnet, and anyone who can open the page has full shell access as your user, so treat tailnet membership accordingly. No Tailscale? The server still runs, but only reachable on the machine itself (`http://127.0.0.1:<port>`).
 
 Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.com/xtermjs/xterm.js)) is embedded in the binary — no CDN, works on a tailnet with no internet at all. Prefer a local-only build? `cargo build --release --no-default-features` compiles the whole feature out.

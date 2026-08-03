@@ -36,6 +36,11 @@ png = { version = "0.18", optional = true }
 tungstenite = { version = "0.24", default-features = false, features = ["handshake"], optional = true }
 serde_json = { version = "1", optional = true }
 
+[target.'cfg(unix)'.dependencies]
+# Signal handling for headless mode, so Ctrl-C removes the tailscale serve
+# config instead of leaving the published URL pointing at a dead port.
+libc = "0.2"
+
 [features]
 default = ["remote"]
 # Web-based remote access (browser attaches to the live terminals; secured

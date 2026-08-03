@@ -371,6 +371,8 @@ impl App {
     // ----- settings -----
 
     /// Tigriden → Settings…
+    /// ⌘, opens at the top; menu_remote sets the flag first to land on the
+    /// Remote Access section instead.
     pub fn open_settings(&mut self) {
         self.push_settings();
         #[cfg(feature = "remote")]
@@ -383,6 +385,7 @@ impl App {
     pub fn close_settings(&mut self) {
         let Some(ui) = self.ui() else { return };
         ui.set_settings_visible(false);
+        ui.set_settings_focus_remote(false);
         // The dialog took focus from the panes; hand it back to the terminal.
         ui.invoke_focus_terminal();
     }
@@ -738,6 +741,21 @@ impl App {
                     // Unshifted PageUp must reach the shell, not scroll.
                     ui.invoke_term_key(keys::K_PAGE_UP.to_string().into(), false, false, false, false);
                     offset("plain-pageup");
+                });
+            }
+            // Opens Settings the way a menu item does: "remote" mimics
+            // File ▸ Remote Access…, anything else ⌘,.
+            if let Ok(which) = std::env::var("TIGRIDENR_TEST_SETTINGS_OPEN") {
+                let app_id = self.id;
+                slint::Timer::single_shot(std::time::Duration::from_millis(1800), move || {
+                    with_app_id(app_id, |app| {
+                        #[cfg(feature = "remote")]
+                        if which == "remote" {
+                            app.menu_remote();
+                            return;
+                        }
+                        app.open_settings();
+                    });
                 });
             }
             // Comma-separated "key=value" settings edits, applied like clicks
@@ -2388,10 +2406,14 @@ impl App {
         }
     }
 
-    /// File ▸ Remote Access… — opens Settings with fresh remote status.
+    /// File ▸ Remote Access… — opens Settings scrolled to that section, so
+    /// the menu item lands where its name promises.
     #[cfg(feature = "remote")]
     pub fn menu_remote(&mut self) {
         self.refresh_remote_ui();
+        if let Some(ui) = self.ui() {
+            ui.set_settings_focus_remote(true);
+        }
         self.open_settings();
     }
 

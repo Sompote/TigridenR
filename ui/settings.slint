@@ -154,12 +154,17 @@ export component SettingsDialog inherits Rectangle {
     in property <int> remote-port;
     in property <string> remote-status;
     in property <string> remote-url;
+    /// Set when the dialog is opened from the Remote Access menu item.
+    in property <bool> focus-remote;
 
     // key/value pairs consumed by App::settings_changed.
     callback changed(string, string);
     callback close();
     callback reset();
     callback reveal-config();
+    /// Fired once after the dialog scrolls itself to the Remote Access
+    /// section, with that section's offset (debug hook).
+    callback jumped-to(length);
 
     background: Theme.bg.with-alpha(0.62);
 
@@ -227,8 +232,24 @@ export component SettingsDialog inherits Rectangle {
                 background: Theme.border;
             }
 
-            ScrollView {
+            scroll := ScrollView {
                 vertical-stretch: 1;
+
+                // Opened from File ▸ Remote Access…: jump straight to that
+                // section instead of landing on Appearance. The timer fires
+                // once, after the first layout pass has given the section a
+                // real y; the guard stops it re-running and pinning the
+                // viewport while the user scrolls.
+                property <bool> jumped: false;
+                Timer {
+                    interval: 50ms;
+                    running: root.focus-remote && !jumped;
+                    triggered => {
+                        scroll.viewport-y = -remote-section.y;
+                        jumped = true;
+                        root.jumped-to(remote-section.y);
+                    }
+                }
 
                 VerticalLayout {
                     padding: 18px;
@@ -465,7 +486,7 @@ export component SettingsDialog inherits Rectangle {
                     Rectangle { height: 1px; background: Theme.border; }
 
                     // ----- remote access -----
-                    VerticalLayout {
+                    remote-section := VerticalLayout {
                         spacing: 9px;
                         SectionTitle { text: "REMOTE ACCESS"; }
 

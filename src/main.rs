@@ -139,6 +139,8 @@ fn wire_callbacks(ui: &MainWindow, app_id: u64) {
     });
     ui.on_settings_reset(app::settings_reset);
     ui.on_settings_reveal_config(app::reveal_config);
+    #[cfg(feature = "framedump")]
+    ui.on_settings_jumped(|y| eprintln!("SETTINGS jumped to remote section at y={y}"));
     ui.on_toggle_view(move || with_app_id(app_id, |app| app.toggle_view()));
     ui.on_toggle_changes(move || with_app_id(app_id, |app| app.toggle_changes()));
     ui.on_banner_primary(move || with_app_id(app_id, |app| app.banner_primary()));

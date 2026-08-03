@@ -101,6 +101,7 @@ export component MainWindow inherits Window {
     in property <int> remote-port: 8620;
     in property <string> remote-status: "";
     in property <string> remote-url: "";
+    in property <bool> settings-focus-remote: false;
 
     // ----- settings -----
     in property <bool> settings-visible: false;
@@ -143,6 +144,7 @@ export component MainWindow inherits Window {
     callback settings-close();
     callback settings-reset();
     callback settings-reveal-config();
+    callback settings-jumped(length);
     callback toggle-view();
     callback toggle-changes();
     callback split-changed();
@@ -561,10 +563,12 @@ export component MainWindow inherits Window {
         remote-port: root.remote-port;
         remote-status: root.remote-status;
         remote-url: root.remote-url;
+        focus-remote: root.settings-focus-remote;
         changed(key, value) => { root.settings-changed(key, value); }
         close => { root.settings-close(); }
         reset => { root.settings-reset(); }
         reveal-config => { root.settings-reveal-config(); }
+        jumped-to(y) => { root.settings-jumped(y); }
     }
 
     if root.name-dialog-visible: Rectangle {

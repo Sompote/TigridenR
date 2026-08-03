@@ -29,7 +29,9 @@ jobs:
             target: aarch64-apple-darwin
             archive: tigridenr-macos-arm64.tar.gz
           - name: macOS (Intel)
-            os: macos-13
+            # Cross-compiled on Apple Silicon (tests run under Rosetta 2);
+            # macos-13 Intel runners are deprecated and queue for hours.
+            os: macos-14
             target: x86_64-apple-darwin
             archive: tigridenr-macos-x86_64.tar.gz
           - name: Linux (x86_64)

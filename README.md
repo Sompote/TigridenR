@@ -140,7 +140,7 @@ Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.
 - **Drag & drop files** — drop any file from Finder and its (shell-quoted) path is typed into the terminal — attach files to an agent prompt like in a native terminal.
 - **Built-in editor** — syntax highlighting for 40+ languages ([cosmic-text](https://crates.io/crates/cosmic-text) + syntect), Cmd+S save, auto-reload when the agent edits the open file.
 - **File viewers** — images, rendered Markdown, CSV/TSV tables, PDF text extraction.
-- **Settings dialog** (⌘,) — theme (Dark/Light × Classic/Minimal/Vivid), accent color, terminal/editor font and size, interface text size, scrollback, the Changes-panel default, and remote access (on/off + port). Appearance changes apply live to every open window and are saved to config.toml; the web client picks them up too.
+- **Settings dialog** (⌘,) — theme (Dark/Light × Classic/Minimal/Vivid), accent color, terminal/editor font and size, interface text size, scrollback (see [memory use](#memory-use)), the Changes-panel default, and remote access (on/off + port). Appearance changes apply live to every open window and are saved to config.toml; the web client picks them up too.
 - **Per-folder sessions, recent folders, native menu bar, persistent layout** — and small on purpose: no webview, no Electron, no C regex libraries.
 
 ## Install
@@ -281,6 +281,12 @@ The window costs what it costs — Slint plus the font system and syntax definit
 
 That is **per terminal**, and only once that much output has actually gone by — a fresh shell costs nothing. A headless server filling 150 000 lines at `scrollback = 100000` measured 5 MB → 205 MB. If you run agents that produce a lot of output and memory matters more than history, lower **Settings ▸ Terminal ▸ Scrollback**; closing a terminal tab releases it immediately.
 
+To check your own:
+
+```sh
+ps -o rss=,command= -c -p "$(pgrep -n tigridenr)" | awk '{printf "%.0f MB\n", $1/1024}'
+```
+
 ## Configuration
 
 `~/Library/Application Support/tigridenr/config.toml`, created on first run:
@@ -292,7 +298,7 @@ accent = ""             # "#rrggbb" to override the theme's accent
 font_family = "Menlo"
 font_size = 13.0        # terminal / editor
 ui_font_size = 13.0     # sidebar, tabs, dialogs
-scrollback = 10000
+scrollback = 10000      # lines kept per terminal; ~2 KB each once used
 show_changes = false    # Changes panel on in new windows
 
 [[presets]]

@@ -136,7 +136,9 @@
         var id = 0;
         // 8-byte LE id; ids stay well below 2^53.
         for (var i = 7; i >= 0; i--) id = id * 256 + bytes[i];
-        if (id === currentTerm) term.write(bytes.subarray(8));
+        // The callback keeps the "jump to latest" button in sync when output
+        // arrives while the view is scrolled up (no scroll event fires then).
+        if (id === currentTerm) term.write(bytes.subarray(8), updateScrollButton);
       }
     };
   }
@@ -161,6 +163,61 @@
   term.onData(function (data) {
     if (currentTerm) send({ t: 'input', term: currentTerm, data: data });
   });
+
+  // ---- scrollback on touch screens ----
+  //
+  // xterm.js has no touch handling of its own, so on a phone there is no way
+  // to reach earlier output. A one-finger vertical swipe scrolls the
+  // scrollback; full-screen apps (alternate buffer) own their screen, so
+  // swipes are left alone there.
+  (function () {
+    var wrap = $('term-wrap');
+    var start = null;   // {x, y} while a one-finger gesture is undecided
+    var lastY = null;   // set once the gesture is committed to vertical
+    var acc = 0;
+    wrap.addEventListener('touchstart', function (ev) {
+      start = ev.touches.length === 1
+        ? { x: ev.touches[0].clientX, y: ev.touches[0].clientY }
+        : null;
+      lastY = null;
+      acc = 0;
+    }, { passive: true });
+    wrap.addEventListener('touchmove', function (ev) {
+      if (ev.touches.length !== 1) return;
+      if (term.buffer.active.type !== 'normal') return;
+      var t = ev.touches[0];
+      if (lastY === null) {
+        if (!start) return;
+        var dx = t.clientX - start.x;
+        var dy = t.clientY - start.y;
+        if (Math.abs(dx) + Math.abs(dy) < 8) return;
+        // A mostly-horizontal swipe stays native: it pans a terminal wider
+        // than the screen. Only vertical swipes become scrollback.
+        if (Math.abs(dx) > Math.abs(dy)) { start = null; return; }
+        lastY = start.y;
+      }
+      acc += lastY - t.clientY;
+      lastY = t.clientY;
+      var cell = cellSize().h || 16;
+      var lines = Math.trunc(acc / cell);
+      if (lines !== 0) {
+        acc -= lines * cell;
+        term.scrollLines(lines);
+      }
+      ev.preventDefault(); // keep the page itself from rubber-banding
+    }, { passive: false });
+    wrap.addEventListener('touchend', function () { start = null; lastY = null; });
+  })();
+
+  // A "jump to latest" button appears whenever the view sits above the live
+  // edge, on phones and desktops alike.
+  function updateScrollButton() {
+    var buffer = term.buffer.active;
+    var above = buffer.type === 'normal' && buffer.viewportY < buffer.baseY;
+    $('scroll-bottom').className = above ? '' : 'hidden';
+  }
+  term.onScroll(updateScrollButton);
+  $('scroll-bottom').onclick = function () { term.scrollToBottom(); };
 
   // ---- sizing ----
 

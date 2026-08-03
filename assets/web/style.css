@@ -117,6 +117,24 @@ body { font: var(--font); color: var(--text); -webkit-text-size-adjust: 100%; }
 }
 #overlay.hidden { display: none; }
 
+/* Floating "jump to latest output" button, shown while scrolled up. */
+#scroll-bottom {
+  position: absolute;
+  right: 16px;
+  bottom: 46px; /* clears the tab bar at the bottom of the pane */
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: rgba(36, 41, 47, 0.92);
+  color: var(--accent);
+  font-size: 15px;
+  cursor: pointer;
+  z-index: 5;
+}
+#scroll-bottom:active, #scroll-bottom:hover { background: var(--panel-hover); }
+#scroll-bottom.hidden { display: none; }
+
 /* ---- drop zone ---- */
 #dropzone {
   position: absolute;

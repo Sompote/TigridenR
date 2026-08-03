@@ -694,12 +694,19 @@ impl App {
                 });
             }
             // Comma-separated "key=value" settings edits, applied like clicks
-            // in the Settings dialog (e.g. "style=vivid,font-size=16").
-            if let Ok(edits) = std::env::var("TIGRIDEN_TEST_SETTINGS") {
+            // in the Settings dialog (e.g. "style=vivid,font-size=16"). Goes
+            // through the real UI callback, so it exercises the same borrow
+            // path a click does.
+            if let Ok(edits) = std::env::var("TIGRIDENR_TEST_SETTINGS") {
+                let app_id = self.id;
                 slint::Timer::single_shot(std::time::Duration::from_millis(2500), move || {
+                    let ui = WINDOWS.with(|slot| {
+                        slot.borrow().iter().find(|e| e.id == app_id).map(|e| e._ui.clone_strong())
+                    });
+                    let Some(ui) = ui else { return };
                     for edit in edits.split(',') {
                         if let Some((key, value)) = edit.split_once('=') {
-                            settings_changed(key, value);
+                            ui.invoke_settings_changed(key.into(), value.into());
                         }
                     }
                     eprintln!("TEST_SETTINGS applied: {:?}", config());
@@ -2227,14 +2234,11 @@ impl App {
 
     // ----- remote access -----
 
-    /// Settings changes for this window. Remote keys are per-window; the rest
-    /// go to the global handler that updates every window.
-    pub fn settings_changed(&mut self, key: &str, value: &str) {
-        #[cfg(not(feature = "remote"))]
-        {
-            settings_changed(key, value);
-        }
-        #[cfg(feature = "remote")]
+    /// The Settings dialog's `remote-*` keys, which apply to this window
+    /// only. Everything else goes to the free `settings_changed`, which must
+    /// run outside `with_app_id` because it borrows every window.
+    #[cfg(feature = "remote")]
+    pub fn remote_setting(&mut self, key: &str, value: &str) {
         match key {
             "remote-enabled" => {
                 if value == "true" {
@@ -2275,7 +2279,9 @@ impl App {
                     self.remote_enable(false);
                 }
             }
-            _ => settings_changed(key, value),
+            // Never fall through to the global handler here: it borrows every
+            // window, and this runs inside a borrow of one of them.
+            _ => {}
         }
     }
 

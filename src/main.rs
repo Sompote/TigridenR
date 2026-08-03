@@ -125,12 +125,17 @@ fn wire_callbacks(ui: &MainWindow, app_id: u64) {
     ui.on_name_dialog_cancel(move || with_app_id(app_id, |app| app.name_dialog_cancel()));
     ui.on_settings_open(move || with_app_id(app_id, |app| app.open_settings()));
     ui.on_settings_close(move || with_app_id(app_id, |app| app.close_settings()));
-    // The settings callbacks below touch every window, so they must not run
-    // inside with_app_id (which holds a borrow on this one).
-    // Routed through the window: appearance keys apply to every window, but
-    // the remote-access keys belong to this one.
+    // Appearance keys reach every window through app::settings_changed, which
+    // borrows each one — so they must NOT run inside with_app_id, which is
+    // already holding a mutable borrow of this window. Only the remote keys,
+    // which touch this window alone, go through with_app_id.
     ui.on_settings_changed(move |key, value| {
-        with_app_id(app_id, |app| app.settings_changed(&key, &value))
+        if key.starts_with("remote") {
+            #[cfg(feature = "remote")]
+            with_app_id(app_id, |app| app.remote_setting(&key, &value));
+        } else {
+            app::settings_changed(&key, &value);
+        }
     });
     ui.on_settings_reset(app::settings_reset);
     ui.on_settings_reveal_config(app::reveal_config);

@@ -58,7 +58,56 @@ The desktop app and every browser client share the **same live shells** — it's
 
 Stopping the server (Ctrl-C, or quitting the app) removes the `tailscale serve` config too, so the published URL never lingers pointing at a dead port.
 
-**Security = Tailscale, by design.** The server never binds anything but `127.0.0.1`. Reachability comes exclusively from `tailscale serve`, which publishes it at `https://<machine>.<tailnet>.ts.net` with a real TLS certificate, admitting only devices logged into your tailnet (install the Tailscale app on your phone, same account, done). Disabling remote access tears the serve config down and stops the server. There is no separate password — access control *is* your tailnet, and anyone who can open the page has full shell access as your user, so treat tailnet membership accordingly. No Tailscale? The server still runs, but only reachable on the machine itself (`http://127.0.0.1:<port>`).
+**Security = Tailscale, by design.** The server never binds anything but `127.0.0.1`. Reachability comes exclusively from `tailscale serve`, which publishes it on your tailnet and admits only devices logged into your account. There is no separate password — access control *is* your tailnet, and anyone who can open the page has full shell access as your user, so treat tailnet membership accordingly. No Tailscale? The server still runs, but only reachable on the machine itself (`http://127.0.0.1:<port>`).
+
+<details>
+<summary><b>Setting up Tailscale</b> — one-time, ~5 minutes</summary>
+
+TigridenR drives the Tailscale CLI for you; you just need Tailscale installed and logged in on both devices.
+
+**1. On the Mac running TigridenR**
+
+Install it ([download](https://tailscale.com/download/mac), or `brew install --cask tailscale`), open the app, and sign in — any Google/GitHub/Microsoft account works and creates your private network ("tailnet") on first login.
+
+Check it's up:
+
+```sh
+tailscale status          # should list your machine, not "Logged out"
+```
+
+**2. On your phone**
+
+Install the Tailscale app (App Store / Play Store), sign in with **the same account**, and toggle the VPN on. That's the whole pairing step — devices on one account see each other automatically.
+
+**3. Turn on remote access in TigridenR**
+
+Settings (⌘,) ▸ Remote Access ▸ **On**. The status line shows your address:
+
+```
+http://<your-machine>.<your-tailnet>.ts.net
+```
+
+Open that on the phone. The name is read from `tailscale status` at runtime — nothing is hardcoded, so it is automatically correct for whatever machine you run on. Rename the machine in the [admin console](https://login.tailscale.com/admin/machines) and the URL follows.
+
+**4. Optional but recommended: enable HTTPS**
+
+By default you get `http://` over the tailnet — traffic is still encrypted by WireGuard, but browsers treat it as insecure, which blocks clipboard access and "Add to Home Screen".
+
+To get a real `https://` address, open [**admin console ▸ DNS**](https://login.tailscale.com/admin/dns) and click **Enable HTTPS Certificates**. Then toggle Remote Access off and on; TigridenR notices the certificates and switches to `https://` automatically.
+
+**Troubleshooting**
+
+| Status line says | Fix |
+|---|---|
+| `Tailscale is not installed` | Install it; TigridenR looks on `$PATH` and in `/Applications/Tailscale.app`. |
+| `Tailscale is not running — open the Tailscale app and log in` | Sign in, or the VPN toggle is off. |
+| `no tailnet DNS name (MagicDNS off?)` | Enable MagicDNS in [admin ▸ DNS](https://login.tailscale.com/admin/dns). |
+| Page won't load on the phone | Check the Tailscale toggle is on there and it's the same account. |
+| `502` from the URL | The server isn't running any more — start TigridenR (recent versions clean this up on exit). |
+
+**Good to know:** `tailscale serve` publishes one address per machine, so only one window (or a headless server) can hold the tailnet URL at a time — the rest stay reachable at `127.0.0.1:<port>` locally. Tailscale's free plan covers personal use comfortably. And **Funnel** (public internet exposure) is deliberately *not* used: your workbench is a shell, so it stays tailnet-only.
+
+</details>
 
 Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.com/xtermjs/xterm.js)) is embedded in the binary — no CDN, works on a tailnet with no internet at all. Prefer a local-only build? `cargo build --release --no-default-features` compiles the whole feature out.
 
@@ -97,7 +146,10 @@ Prefer a bare binary? The release also ships `tigridenr-0.1.0-macos-arm64.tar.gz
 git clone https://github.com/Sompote/TigridenR.git
 cd TigridenR
 cargo build --release
-./target/release/tigridenr        # or ./bundle/make-app.sh for dist/TigridenR.app
+./target/release/tigridenr          # run it directly
+
+./bundle/make-app.sh                # or build dist/TigridenR.app…
+cp -R dist/TigridenR.app /Applications/   # …and install it
 ```
 
 Local-only build (remote access compiled out): `cargo build --release --no-default-features`.
@@ -111,7 +163,7 @@ macOS is the primary target; Linux/Windows are untested but the stack is cross-p
 2. Click a preset button (e.g. **claude**) to launch the agent, or type any command.
 3. Watch the file tree update as the agent works; click any file to inspect or tweak it.
 4. Click **+** in the terminal tab strip for more shells in the same folder; **✕** (next to **+**) closes the active one after a confirmation. Add more folders for more agents in parallel.
-5. **File ▸ Remote Access… ▸ Enable**, open the URL on your phone, and walk away — the session comes with you.
+5. **Settings (⌘,) ▸ Remote Access ▸ On**, open the URL on your phone, and walk away — the session comes with you.
 
 ### Track & roll back what the agent changes
 
@@ -185,18 +237,18 @@ Slint provides only the chrome (sidebar, layout, splitter). The two hard parts a
 
 Only the PTY reader threads run in the background; rendering and editing happen on the UI thread with coalesced repaints.
 
-The remote layer (`src/remote/`, default-on `remote` feature) is a loopback-only HTTP/WebSocket server with no async runtime — plain threads, matching the rest of the app. The PTY reader thread tees raw output to attached browser clients; a newly attached client gets the current screen serialized back to ANSI straight from the alacritty grid (recent scrollback, colors, cursor, and terminal modes included), which is why attaching mid-TUI just works. Browser keystrokes feed the same PTY writer channel the desktop uses. Sidebar state (sessions, tabs, tree, changes) streams as JSON snapshots; terminal bytes go as binary frames. In `--headless` mode a minimal session manager replaces the GUI entirely — same terminals, tree, and change tracking, no Slint or window server involved.
+The remote layer (`src/remote/`, default-on `remote` feature) is a loopback-only HTTP/WebSocket server with no async runtime — plain threads, matching the rest of the app. The PTY reader thread tees raw output to attached browser clients; a newly attached client gets the current screen serialized back to ANSI straight from the alacritty grid (recent scrollback, colors, cursor, and terminal modes included), which is why attaching mid-TUI just works. Browser keystrokes feed the same PTY writer channel the desktop uses. Sidebar state (sessions, tabs, tree, changes) streams as JSON snapshots; terminal bytes go as binary frames. Each window owns its own server and state hub, so several windows can serve several ports; because terminal ids are process-global, every remote operation is scoped to the hub that published it. In `--headless` mode a minimal session manager replaces the GUI entirely — same terminals, tree, and change tracking, no Slint or window server involved.
 
 `vendor/cosmic-text/` is a verbatim copy of cosmic-text 0.19 with one change: its syntect dependency uses the pure-Rust `fancy-regex` engine instead of the oniguruma C library (smaller binary, no C build dependency).
 
 ### Debug builds
 
-`cargo build --features framedump`, then run with `TIGRIDENR_DUMP=/tmp/frames` to dump both panes as PNGs. `TIGRIDENR_TEST_INPUT='claude\r'` and `TIGRIDENR_TEST_OPEN=path` script the first session for headless testing.
+`cargo build --features framedump` enables the test hooks: `TIGRIDENR_DUMP=/tmp/frames` dumps both panes as PNGs, `TIGRIDENR_TEST_INPUT='claude\r'` and `TIGRIDENR_TEST_OPEN=path` script the first session, `TIGRIDENR_TEST_SETTINGS='style=vivid,font-size=16'` applies Settings edits through the real dialog callback, and `TIGRIDENR_TEST_SCROLL=1` exercises the scrollback keys and reports the viewport offset. `cargo test` covers the terminal key encoder, the theme table, and the remote snapshot/state layer.
 
 ## Roadmap / known limitations (v1)
 
 - [ ] Editor undo
-- [ ] Mouse reporting to TUIs (desktop; the web terminal already forwards what TUIs request)
+- [ ] Mouse reporting to TUIs on the desktop (the web terminal already does it)
 - [ ] IME / dead-key composition
 - [ ] Editor tabs (currently one open file per session)
 - [ ] PDF page rendering (currently text extraction)

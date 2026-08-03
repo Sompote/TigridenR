@@ -8,7 +8,7 @@ Run `claude`, `codex`, `gemini` — any terminal agent — each in its own folde
 
 No run/debug tooling, no chat panel, no LSP. The agents do the heavy lifting; TigridenR gives you eyes and hands — local or remote.
 
-Written in pure Rust. **13–18 MB binary, ~40 MB RAM** — no Electron, no webview, no bundled browser.
+Written in pure Rust. **13–18 MB binary; ~60 MB RAM idle, ~5 MB headless** — no Electron, no webview, no bundled browser. ([measured](#memory-use))
 
 ![TigridenR supervising an agent: the viewer shows a chart the agent produced while the agent CLI runs in one of three terminal tabs below](assets/screenshot.png)
 
@@ -257,6 +257,29 @@ The Changes list is mirrored to remote clients too — the **Changes** button in
 | Terminal | everything a terminal expects: Ctrl+C/Z/D/R…, arrows, F1–F12, TUIs; drag to select (double-click = word), Cmd+C copies, Cmd+V pastes (bracketed) |
 | Scrollback | wheel scrolls; **Shift+PageUp/PageDown** page through history, **Shift+Home/End** jump to its ends, **Shift+↑/↓** move a line. Unshifted keys still reach the shell, and full-screen apps (vim, less, agent TUIs) keep their own scrolling. Typing jumps back to the live edge. Same keys work in the browser. |
 | Editor   | typing, arrows / Home / End / PgUp / PgDn (+Shift selects, +Alt jumps words), Cmd+A / C / X / V, Cmd+S saves |
+
+## Memory use
+
+Measured on macOS (resident set size, one folder open):
+
+| | RAM |
+|---|---|
+| Headless (`--headless`), idle | **~5 MB** |
+| Desktop window, idle | **~60 MB** |
+| Desktop window, a working session | **~85–105 MB** |
+
+The window costs what it costs — Slint plus the font system and syntax definitions are most of that 60 MB, and it barely moves while idle.
+
+**Scrollback is what actually grows over time**, and it is the one setting worth thinking about. Each retained line costs roughly 2 KB at 80 columns (more on a wider terminal), so a terminal that has scrolled its full history holds:
+
+| `scrollback` | Held once full (80 cols) |
+|---|---|
+| 1 000 | ~2 MB |
+| 10 000 (default) | ~20 MB |
+| 50 000 | ~100 MB |
+| 100 000 | ~200 MB |
+
+That is **per terminal**, and only once that much output has actually gone by — a fresh shell costs nothing. A headless server filling 150 000 lines at `scrollback = 100000` measured 5 MB → 205 MB. If you run agents that produce a lot of output and memory matters more than history, lower **Settings ▸ Terminal ▸ Scrollback**; closing a terminal tab releases it immediately.
 
 ## Configuration
 

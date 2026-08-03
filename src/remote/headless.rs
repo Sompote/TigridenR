@@ -406,9 +406,12 @@ fn install_signal_cleanup() {
         // Only async-signal-safe work here; the watcher thread does the rest.
         QUIT.store(true, Ordering::Release);
     }
+    // Cast through the fn pointer type; casting the fn *item* straight to an
+    // integer is what the `fn_ptr_cast` lint warns about.
+    let handler = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
     unsafe {
-        libc::signal(libc::SIGINT, on_signal as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, on_signal as libc::sighandler_t);
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
     }
     std::thread::spawn(|| loop {
         if QUIT.load(Ordering::Acquire) {

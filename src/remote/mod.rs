@@ -29,11 +29,6 @@ pub fn is_active(owner: u64) -> bool {
     SERVERS.lock().unwrap().contains_key(&owner)
 }
 
-/// Port this owner is serving on, if any.
-pub fn active_port(owner: u64) -> Option<u16> {
-    SERVERS.lock().unwrap().get(&owner).map(|s| s.port)
-}
-
 /// True when some *other* owner already holds this port — checked before
 /// binding so the Settings dialog can report the clash.
 pub fn port_taken_by_other(owner: u64, port: u16) -> bool {

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::host::RemoteHost;
+use super::state::StateHub;
 
 const INDEX_HTML: &[u8] = include_bytes!("../../assets/web/index.html");
 const APP_JS: &[u8] = include_bytes!("../../assets/web/app.js");
@@ -17,10 +18,15 @@ const STYLE_CSS: &[u8] = include_bytes!("../../assets/web/style.css");
 const XTERM_JS: &[u8] = include_bytes!("../../assets/web/vendor/xterm.js");
 const XTERM_CSS: &[u8] = include_bytes!("../../assets/web/vendor/xterm.css");
 
-pub fn handle(stream: TcpStream, host: Arc<dyn RemoteHost>, shutdown: Arc<AtomicBool>) {
+pub fn handle(
+    stream: TcpStream,
+    host: Arc<dyn RemoteHost>,
+    hub: Arc<StateHub>,
+    shutdown: Arc<AtomicBool>,
+) {
     let Some(path) = peek_path(&stream) else { return };
     if path == "/ws" {
-        super::ws::handle(stream, host, shutdown);
+        super::ws::handle(stream, host, hub, shutdown);
     } else {
         serve_static(stream, &path);
     }

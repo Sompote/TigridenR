@@ -25,18 +25,18 @@ Agentic coding means running several agents in several folders and *checking in 
 
 The desktop app and every browser client share the **same live shells** — it's a tmux-style attach, not a screen-share. Output mirrors everywhere in real time; anyone attached can type. Start Claude Code at your desk, then approve its plan from your phone in the kitchen; the desktop window shows every keystroke.
 
-**What the web page gives you** (same dark theme, same orange accent):
+**What the web page gives you** (it mirrors your desktop theme, accent and font — change them in Settings and the browser follows):
 
 - The **terminal** (xterm.js) with full TUI support — attaching mid-`vim` or mid-agent-session replays the current screen (plus up to 2,000 lines of recent scrollback) straight from the terminal grid, so you never land on a blank page.
 - The **agent sidebar** — your folders and their browseable file trees (tap to expand/collapse), the live **Changes (N)** list of what the agent touched (with a toggle button), and a **tap-to-view file reader**: tap any file to read its contents full-screen (text files, capped at 512 KB; viewing only — editing stays on the desktop).
 - **Terminal tabs and preset buttons** — switch folders and shells, open or close terminals, and launch `claude`/`codex`/`gemini` with one tap.
 - A **phone-friendly layout** — drawer sidebar, soft-keyboard button, a ⟳ resync button, and font auto-fit to the host's grid width.
 
-With several desktop windows open, the web mirrors the primary (first) window; other windows keep working locally but aren't published.
+**Every window can serve its own port.** Turn remote access on per window and give each a different port (Settings ▸ Remote Access), so a "reviewers" window and a "build" window are two separate URLs. A window's page only ever sees that window's folders and shells.
 
 **Turn it on** (one of):
 
-1. **In the app:** **File ▸ Remote Access… ▸ Enable.** The dialog shows the URL to open.
+1. **In the app:** **Settings** (⌘,) **▸ Remote Access ▸ On** — also reachable via **File ▸ Remote Access…**. Set the port there; the URL to open is shown beneath it.
 2. **In config** (`~/Library/Application Support/tigridenr/config.toml`):
 
    ```toml
@@ -69,6 +69,7 @@ Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.
 - **Drag & drop files** — drop any file from Finder and its (shell-quoted) path is typed into the terminal — attach files to an agent prompt like in a native terminal.
 - **Built-in editor** — syntax highlighting for 40+ languages ([cosmic-text](https://crates.io/crates/cosmic-text) + syntect), Cmd+S save, auto-reload when the agent edits the open file.
 - **File viewers** — images, rendered Markdown, CSV/TSV tables, PDF text extraction.
+- **Settings dialog** (⌘,) — theme (Dark/Light × Classic/Minimal/Vivid), accent color, terminal/editor font and size, interface text size, scrollback, the Changes-panel default, and remote access (on/off + port). Appearance changes apply live to every open window and are saved to config.toml; the web client picks them up too.
 - **Per-folder sessions, recent folders, native menu bar, persistent layout** — and small on purpose: no webview, no Electron, no C regex libraries.
 
 ## Quick install (macOS)
@@ -129,10 +130,14 @@ The Changes list is mirrored to remote clients too — the **Changes** button in
 `~/Library/Application Support/tigridenr/config.toml`, created on first run:
 
 ```toml
-theme = "dark"          # "dark" | "light"
+# Everything here is editable in Settings (⌘,).
+theme = "classic-dark"  # {classic,minimal,vivid}-{dark,light}
+accent = ""             # "#rrggbb" to override the theme's accent
 font_family = "Menlo"
-font_size = 13.0
+font_size = 13.0        # terminal / editor
+ui_font_size = 13.0     # sidebar, tabs, dialogs
 scrollback = 10000
+show_changes = false    # Changes panel on in new windows
 
 [[presets]]
 label = "claude"
@@ -155,7 +160,8 @@ label = "claude-review"
 command = "claude /review"
 send_enter = true
 
-# Remote web access (see "Remote" above).
+# Remote web access (see "Remote" above). Each window can override the
+# port in Settings; this is the default new windows start from.
 [remote]
 enabled = false
 port = 8620
@@ -192,7 +198,6 @@ The remote layer (`src/remote/`, default-on `remote` feature) is a loopback-only
 - [ ] Linux / Windows testing
 - [ ] Web: file editing, diff viewer, and discard actions (currently terminal + file viewing)
 - [ ] Web: adding/removing folders remotely (folders come from the desktop or the last saved session)
-- [ ] Web: mirror a window other than the primary one
 
 ## License
 

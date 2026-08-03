@@ -16,7 +16,7 @@ use crate::term::{TermHooks, TermSession};
 use crate::tree::TreeState;
 
 use super::host::{Cmd, RemoteHost};
-use super::state::{UiSession, UiState, UiTreeRow, HUB};
+use super::state::{StateHub, UiSession, UiState, UiTheme, UiTreeRow};
 
 /// Nominal cell size for PTY pixel dimensions; headless has no renderer.
 const CELL_PX: (u16, u16) = (8, 17);
@@ -54,6 +54,8 @@ pub struct Manager {
     /// Shared with the PTY threads so OSC color answerbacks use the
     /// configured theme (fixed for the process in headless mode).
     theme_index: Arc<std::sync::atomic::AtomicU8>,
+    /// This server's state hub; set once the server is up.
+    hub: Option<Arc<StateHub>>,
 }
 
 impl Manager {
@@ -194,7 +196,25 @@ impl Manager {
             }
         }
 
+        let Some(hub) = self.hub.as_ref() else { return };
+        let theme = crate::theme::by_id(&self.config.theme);
+        let hex = |c: [u8; 3]| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
         let state = UiState {
+            title: "TigridenR".into(),
+            theme: UiTheme {
+                bg: hex(theme.ui.bg),
+                panel: hex(theme.ui.panel),
+                panel_hover: hex(theme.ui.panel_hover),
+                selection: hex(theme.ui.selection),
+                border: hex(theme.ui.border),
+                text: hex(theme.ui.text),
+                text_dim: hex(theme.ui.text_dim),
+                accent: hex(self.config.accent_rgb()),
+                font_family: self.config.font_family.clone(),
+                font_size: self.config.font_size,
+                ui_font_size: self.config.ui_font_size,
+                ansi: theme.term.iter().map(|c| hex(*c)).collect(),
+            },
             active_session: self.active,
             presets: self.config.presets.iter().map(|p| p.label.clone()).collect(),
             sessions: self
@@ -210,7 +230,7 @@ impl Manager {
                 .collect(),
             tree,
         };
-        HUB.publish(&state);
+        hub.publish(&state);
     }
 
     fn refresh_fs(&mut self, root: &Path) {
@@ -329,6 +349,7 @@ pub fn run(config: Config, port: u16) -> ! {
         active: 0,
         row_map: Vec::new(),
         events: events_tx.clone(),
+        hub: None,
     };
     // Restore the same folders the GUI would.
     let state = crate::config::load_state();
@@ -338,12 +359,17 @@ pub fn run(config: Config, port: u16) -> ! {
         }
     }
     manager.active = state.active.min(manager.sessions.len().saturating_sub(1));
-    manager.publish();
     let manager = Arc::new(Mutex::new(manager));
 
     let host = Arc::new(HeadlessHost { manager: manager.clone() });
-    match super::activate(port, host) {
-        Ok(()) => eprintln!("tigridenr: remote server on http://127.0.0.1:{port}"),
+    // Headless owns a single server; 0 is its owner id.
+    match super::activate(0, port, host) {
+        Ok(hub) => {
+            let mut m = manager.lock().unwrap();
+            m.hub = Some(hub);
+            m.publish();
+            eprintln!("tigridenr: remote server on http://127.0.0.1:{port}");
+        }
         Err(err) => {
             eprintln!("tigridenr: {err}");
             std::process::exit(1);

@@ -149,6 +149,11 @@ export component SettingsDialog inherits Rectangle {
     in property <int> scrollback;
     in property <bool> show-changes;
     in property <string> config-path;
+    // ----- remote access -----
+    in property <bool> remote-enabled;
+    in property <int> remote-port;
+    in property <string> remote-status;
+    in property <string> remote-url;
 
     // key/value pairs consumed by App::settings_changed.
     callback changed(string, string);
@@ -454,6 +459,105 @@ export component SettingsDialog inherits Rectangle {
                             color: Theme.text-dim;
                             font-size: Theme.font-size-tiny;
                             wrap: word-wrap;
+                        }
+                    }
+
+                    Rectangle { height: 1px; background: Theme.border; }
+
+                    // ----- remote access -----
+                    VerticalLayout {
+                        spacing: 9px;
+                        SectionTitle { text: "REMOTE ACCESS"; }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            FieldLabel { text: "This window"; }
+                            Chip {
+                                label: "Off";
+                                selected: !root.remote-enabled;
+                                clicked => { root.changed("remote-enabled", "false"); }
+                            }
+                            Chip {
+                                label: "On";
+                                selected: root.remote-enabled;
+                                clicked => { root.changed("remote-enabled", "true"); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            FieldLabel { text: "Port"; }
+                            Chip {
+                                label: "−";
+                                clicked => { root.changed("remote-port-step", "-1"); }
+                            }
+                            Rectangle {
+                                width: 64px;
+                                height: Theme.chip-height;
+                                border-radius: 5px;
+                                background: Theme.bg;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                port-input := TextInput {
+                                    width: parent.width - 12px;
+                                    text: root.remote-port;
+                                    color: Theme.text;
+                                    font-size: Theme.font-size-small;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    input-type: number;
+                                    single-line: true;
+                                    accepted => { root.changed("remote-port", self.text); }
+                                }
+                            }
+                            Chip {
+                                label: "+";
+                                clicked => { root.changed("remote-port-step", "1"); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                        }
+
+                        Text {
+                            text: "Each window can serve its own port — give a second window a different "
+                                + "number to reach both from the browser.";
+                            color: Theme.text-dim;
+                            font-size: Theme.font-size-tiny;
+                            wrap: word-wrap;
+                        }
+
+                        Text {
+                            text: root.remote-status;
+                            color: Theme.text-dim;
+                            font-size: Theme.font-size-tiny;
+                            wrap: word-wrap;
+                        }
+
+                        if root.remote-url != "": Rectangle {
+                            height: Theme.chip-height + 6px;
+                            border-radius: 5px;
+                            background: Theme.bg;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            TextInput {
+                                x: 8px;
+                                width: parent.width - 16px;
+                                text: root.remote-url;
+                                color: Theme.accent;
+                                font-size: Theme.font-size-small;
+                                vertical-alignment: center;
+                                read-only: true;
+                                single-line: true;
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Chip {
+                                label: "Re-check Tailscale";
+                                clicked => { root.changed("remote-recheck", ""); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
                         }
                     }
 

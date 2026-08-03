@@ -18,12 +18,17 @@ use tungstenite::WebSocket;
 
 use super::host::{Cmd, RemoteHost};
 use super::registry;
-use super::state::HUB;
+use super::state::StateHub;
 
 const POLL: Duration = Duration::from_millis(20);
 const PING_EVERY: Duration = Duration::from_secs(20);
 
-pub fn handle(stream: TcpStream, host: Arc<dyn RemoteHost>, shutdown: Arc<AtomicBool>) {
+pub fn handle(
+    stream: TcpStream,
+    host: Arc<dyn RemoteHost>,
+    hub: Arc<StateHub>,
+    shutdown: Arc<AtomicBool>,
+) {
     // Handshake on a blocking socket; the poll timeout is set afterwards.
     let mut ws = match tungstenite::accept(stream) {
         Ok(ws) => ws,
@@ -37,7 +42,7 @@ pub fn handle(stream: TcpStream, host: Arc<dyn RemoteHost>, shutdown: Arc<Atomic
     let mut last_ping = Instant::now();
 
     // Initial state push, if one has been published.
-    if let Some((version, json)) = HUB.newer_than(0) {
+    if let Some((version, json)) = hub.newer_than(0) {
         seen_state = version;
         if ws.send(Message::Text(json.into())).is_err() {
             return;
@@ -53,7 +58,7 @@ pub fn handle(stream: TcpStream, host: Arc<dyn RemoteHost>, shutdown: Arc<Atomic
         // 1. Client -> server.
         match ws.read() {
             Ok(Message::Text(text)) => {
-                if !handle_message(&mut ws, &text, &host, &mut attached) {
+                if !handle_message(&mut ws, &text, &host, &hub, &mut attached) {
                     return;
                 }
             }
@@ -102,7 +107,7 @@ pub fn handle(stream: TcpStream, host: Arc<dyn RemoteHost>, shutdown: Arc<Atomic
         }
 
         // 3. Chrome state -> client.
-        if let Some((version, json)) = HUB.newer_than(seen_state) {
+        if let Some((version, json)) = hub.newer_than(seen_state) {
             seen_state = version;
             if ws.send(Message::Text(json.into())).is_err() {
                 return;
@@ -124,12 +129,12 @@ const FILE_CAP: usize = 512 * 1024;
 
 /// Reads a file for the web viewer. Only paths inside a published session
 /// root are served — the tree rows are the only legitimate source of paths.
-fn read_file_reply(path: &str) -> serde_json::Value {
+fn read_file_reply(path: &str, hub: &Arc<StateHub>) -> serde_json::Value {
     let fail = |msg: &str| serde_json::json!({ "t": "file", "path": path, "error": msg });
     let Ok(canonical) = std::path::Path::new(path).canonicalize() else {
         return fail("file not found");
     };
-    let roots = super::state::ROOTS.lock().unwrap().clone();
+    let roots = hub.roots();
     let allowed = roots.iter().any(|root| {
         std::path::Path::new(root)
             .canonicalize()
@@ -174,6 +179,7 @@ fn handle_message(
     ws: &mut WebSocket<TcpStream>,
     text: &str,
     host: &Arc<dyn RemoteHost>,
+    hub: &Arc<StateHub>,
     attached: &mut HashMap<u64, Receiver<Vec<u8>>>,
 ) -> bool {
     let Ok(msg) = serde_json::from_str::<serde_json::Value>(text) else { return true };
@@ -183,13 +189,18 @@ fn handle_message(
 
     match kind {
         "input" => {
-            if let Some(data) = msg["data"].as_str() {
-                registry::write(term(), data.as_bytes().to_vec());
+            let id = term();
+            if hub.owns_term(id) {
+                if let Some(data) = msg["data"].as_str() {
+                    registry::write(id, data.as_bytes().to_vec());
+                }
             }
         }
         "attach" => {
             let id = term();
-            match registry::attach(id) {
+            // Only this window's own terminals; ids are global, so a stray
+            // id must not reach another window's shell.
+            match hub.owns_term(id).then(|| registry::attach(id)).flatten() {
                 Some((snapshot, rx, cols, rows)) => {
                     attached.insert(id, rx);
                     let resizable = host.allow_remote_resize();
@@ -215,7 +226,7 @@ fn handle_message(
             attached.remove(&term());
         }
         "resize" => {
-            if host.allow_remote_resize() {
+            if host.allow_remote_resize() && hub.owns_term(term()) {
                 host.command(Cmd::Resize {
                     term: term(),
                     cols: msg["cols"].as_u64().unwrap_or(80) as u16,
@@ -225,7 +236,7 @@ fn handle_message(
         }
         "open_file" => {
             if let Some(path) = msg["path"].as_str() {
-                let reply = read_file_reply(path);
+                let reply = read_file_reply(path, hub);
                 if ws.send(Message::Text(reply.to_string().into())).is_err() {
                     return false;
                 }

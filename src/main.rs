@@ -127,7 +127,11 @@ fn wire_callbacks(ui: &MainWindow, app_id: u64) {
     ui.on_settings_close(move || with_app_id(app_id, |app| app.close_settings()));
     // The settings callbacks below touch every window, so they must not run
     // inside with_app_id (which holds a borrow on this one).
-    ui.on_settings_changed(|key, value| app::settings_changed(&key, &value));
+    // Routed through the window: appearance keys apply to every window, but
+    // the remote-access keys belong to this one.
+    ui.on_settings_changed(move |key, value| {
+        with_app_id(app_id, |app| app.settings_changed(&key, &value))
+    });
     ui.on_settings_reset(app::settings_reset);
     ui.on_settings_reveal_config(app::reveal_config);
     ui.on_toggle_view(move || with_app_id(app_id, |app| app.toggle_view()));
@@ -137,8 +141,6 @@ fn wire_callbacks(ui: &MainWindow, app_id: u64) {
     #[cfg(feature = "remote")]
     {
         ui.on_menu_remote(move || with_app_id(app_id, |app| app.menu_remote()));
-        ui.on_remote_toggle(move || with_app_id(app_id, |app| app.remote_toggle()));
-        ui.on_remote_dialog_close(move || with_app_id(app_id, |app| app.remote_dialog_close()));
     }
 
     ui.on_term_key(move |text, ctrl, alt, meta, shift| {

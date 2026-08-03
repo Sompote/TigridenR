@@ -138,8 +138,9 @@ fn apply_and_save(config: Config) {
     }
 }
 
-/// One control in the Settings dialog changed. Values arrive as strings;
-/// anything unparseable leaves the config untouched.
+/// One control in the Settings dialog changed — the appearance keys, which
+/// apply to every open window. Remote keys are handled per-window in
+/// `App::settings_changed`, which delegates here for everything else.
 pub fn settings_changed(key: &str, value: &str) {
     let mut config = config();
     let current = theme::by_id(&config.theme);
@@ -272,6 +273,9 @@ pub struct App {
     /// Sidebar rows mirrored to remote web clients, rebuilt with the tree.
     #[cfg(feature = "remote")]
     remote_tree: Vec<crate::remote::state::UiTreeRow>,
+    /// This window's remote server hub; None while remote access is off.
+    #[cfg(feature = "remote")]
+    remote_hub: Option<std::sync::Arc<crate::remote::state::StateHub>>,
     font_system: FontSystem,
     swash_cache: SwashCache,
     term_renderer: Option<TermRenderer>,
@@ -340,6 +344,8 @@ impl App {
             row_map: Vec::new(),
             #[cfg(feature = "remote")]
             remote_tree: Vec::new(),
+            #[cfg(feature = "remote")]
+            remote_hub: None,
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
             term_renderer: None,
@@ -363,6 +369,8 @@ impl App {
     /// Tigriden → Settings…
     pub fn open_settings(&mut self) {
         self.push_settings();
+        #[cfg(feature = "remote")]
+        self.refresh_remote_ui();
         if let Some(ui) = self.ui() {
             ui.set_settings_visible(true);
         }
@@ -2164,14 +2172,33 @@ impl App {
         self.publish_remote_state();
     }
 
-    /// Mirrors the chrome state (sessions, tabs, presets, tree) to remote web
-    /// clients. Primary window only — same ownership rule as persist().
+    /// Mirrors this window's chrome state (sessions, tabs, presets, tree,
+    /// theme) to the browser clients connected to *this* window's server.
     #[cfg(feature = "remote")]
     fn publish_remote_state(&self) {
-        if !self.is_primary {
-            return;
-        }
+        let Some(hub) = self.remote_hub.as_ref() else { return };
+        let theme = theme::by_id(&self.config.theme);
+        let accent = self.config.accent_rgb();
+        let hex = |c: [u8; 3]| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]);
         let state = crate::remote::state::UiState {
+            title: self
+                .ui()
+                .map(|ui| ui.get_window_title().to_string())
+                .unwrap_or_else(|| "TigridenR".into()),
+            theme: crate::remote::state::UiTheme {
+                bg: hex(theme.ui.bg),
+                panel: hex(theme.ui.panel),
+                panel_hover: hex(theme.ui.panel_hover),
+                selection: hex(theme.ui.selection),
+                border: hex(theme.ui.border),
+                text: hex(theme.ui.text),
+                text_dim: hex(theme.ui.text_dim),
+                accent: hex(accent),
+                font_family: self.config.font_family.clone(),
+                font_size: self.config.font_size,
+                ui_font_size: self.config.ui_font_size,
+                ansi: theme.term.iter().map(|c| hex(*c)).collect(),
+            },
             active_session: self.active,
             presets: self.presets.iter().map(|p| p.label.clone()).collect(),
             sessions: self
@@ -2191,7 +2218,7 @@ impl App {
                 .collect(),
             tree: self.remote_tree.clone(),
         };
-        crate::remote::state::HUB.publish(&state);
+        hub.publish(&state);
     }
 
     pub fn split_changed(&mut self) {
@@ -2200,36 +2227,79 @@ impl App {
 
     // ----- remote access -----
 
-    /// File ▸ Remote Access… — opens the dialog with fresh status.
+    /// Settings changes for this window. Remote keys are per-window; the rest
+    /// go to the global handler that updates every window.
+    pub fn settings_changed(&mut self, key: &str, value: &str) {
+        #[cfg(not(feature = "remote"))]
+        {
+            settings_changed(key, value);
+        }
+        #[cfg(feature = "remote")]
+        match key {
+            "remote-enabled" => {
+                if value == "true" {
+                    self.remote_enable(true)
+                } else {
+                    self.remote_disable(true)
+                }
+            }
+            "remote-port" | "remote-port-step" => {
+                let current = self.config.remote.port;
+                let port = if key == "remote-port-step" {
+                    let step: i32 = value.parse().unwrap_or(0);
+                    (current as i32 + step).clamp(1024, 65535) as u16
+                } else {
+                    match value.trim().parse::<u16>() {
+                        Ok(p) if p >= 1024 => p,
+                        _ => return,
+                    }
+                };
+                if port == current {
+                    return;
+                }
+                self.config.remote.port = port;
+                // Persist to config.toml through the shared config so a new
+                // window inherits the last-used port as its default.
+                let mut config = config();
+                config.remote.port = port;
+                set_config(config.clone());
+                config::save_config(&config);
+                self.refresh_remote_ui();
+                // Re-bind on the new port if we are already serving.
+                if crate::remote::is_active(self.id) {
+                    self.remote_enable(true);
+                }
+            }
+            "remote-recheck" => {
+                if crate::remote::is_active(self.id) {
+                    self.remote_enable(false);
+                }
+            }
+            _ => settings_changed(key, value),
+        }
+    }
+
+    /// Pushes the current remote state into the dialog properties.
     #[cfg(feature = "remote")]
-    pub fn menu_remote(&mut self) {
+    fn refresh_remote_ui(&self) {
         let Some(ui) = self.ui() else { return };
-        let active = crate::remote::is_active();
+        let active = crate::remote::is_active(self.id);
         ui.set_remote_enabled(active);
+        ui.set_remote_port(self.config.remote.port as i32);
         if !active {
             ui.set_remote_status(SharedString::from(
-                "Off. Enable to control this window's terminals from a browser \
-                 (secured via Tailscale).",
+                "Off. Turn on to control this window's terminals from a browser \
+                 (secured by Tailscale).",
             ));
             ui.set_remote_url(SharedString::default());
         }
-        ui.set_remote_dialog_visible(true);
     }
 
+    /// File ▸ Remote Access… — opens Settings with fresh remote status.
     #[cfg(feature = "remote")]
-    pub fn remote_dialog_close(&mut self) {
-        if let Some(ui) = self.ui() {
-            ui.set_remote_dialog_visible(false);
-        }
-    }
-
-    #[cfg(feature = "remote")]
-    pub fn remote_toggle(&mut self) {
-        if crate::remote::is_active() {
-            self.remote_disable(true)
-        } else {
-            self.remote_enable(true)
-        }
+    pub fn menu_remote(&mut self) {
+        self.refresh_remote_ui();
+        self.open_settings();
     }
 
     /// Starts the loopback server, then brings up `tailscale serve` on a
@@ -2238,11 +2308,15 @@ impl App {
     pub fn remote_enable(&mut self, persist: bool) {
         let port = self.config.remote.port;
         let host = std::sync::Arc::new(crate::remote::host::GuiHost { app_id: self.id });
-        if let Err(err) = crate::remote::activate(port, host) {
-            if let Some(ui) = self.ui() {
-                ui.set_remote_status(SharedString::from(format!("Failed to start: {err}")));
+        match crate::remote::activate(self.id, port, host) {
+            Ok(hub) => self.remote_hub = Some(hub),
+            Err(err) => {
+                if let Some(ui) = self.ui() {
+                    ui.set_remote_enabled(false);
+                    ui.set_remote_status(SharedString::from(format!("Failed to start: {err}")));
+                }
+                return;
             }
-            return;
         }
         if persist {
             self.config.remote.enabled = true;
@@ -2305,7 +2379,8 @@ impl App {
 
     #[cfg(feature = "remote")]
     fn remote_disable(&mut self, persist: bool) {
-        crate::remote::deactivate();
+        crate::remote::deactivate(self.id);
+        self.remote_hub = None;
         std::thread::spawn(crate::remote::tailscale::disable);
         if persist {
             self.config.remote.enabled = false;

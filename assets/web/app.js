@@ -3,7 +3,8 @@
 (function () {
   'use strict';
 
-  // Terminal palette — must match src/term/colors.rs DARK.
+  // Fallback palette (classic dark) used until the host publishes its theme;
+  // src/remote/state.rs sends the real one with every state update.
   var THEME = {
     background: '#1e2227',
     foreground: '#d6dbe1',
@@ -16,6 +17,58 @@
     brightYellow: '#f0c674', brightBlue: '#85b8ef', brightMagenta: '#d9a4ed',
     brightCyan: '#7bd4d4', brightWhite: '#f0f3f6'
   };
+
+  var ANSI_NAMES = [
+    'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+    'brightBlack', 'brightRed', 'brightGreen', 'brightYellow',
+    'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'
+  ];
+
+  var appliedTheme = '';
+
+  // Mirrors the desktop appearance: CSS custom properties for the chrome,
+  // an xterm theme for the terminal.
+  function applyTheme(t) {
+    if (!t || !t.ansi || t.ansi.length < 16) return;
+    var key = JSON.stringify(t);
+    if (key === appliedTheme) return;
+    appliedTheme = key;
+
+    var css = document.documentElement.style;
+    css.setProperty('--bg', t.bg);
+    css.setProperty('--panel', t.panel);
+    css.setProperty('--panel-hover', t.panel_hover);
+    css.setProperty('--selection', t.selection);
+    css.setProperty('--border', t.border);
+    css.setProperty('--text', t.text);
+    css.setProperty('--text-dim', t.text_dim);
+    css.setProperty('--accent', t.accent);
+    if (t.ui_font_size) {
+      css.setProperty('--font', t.ui_font_size +
+        'px -apple-system, "Segoe UI", system-ui, sans-serif');
+    }
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', t.bg);
+
+    var xterm = {
+      background: t.ansi[0],
+      foreground: t.ansi[7],
+      cursor: t.ansi[7],
+      cursorAccent: t.ansi[0],
+      selectionBackground: t.selection
+    };
+    ANSI_NAMES.forEach(function (name, i) { xterm[name] = t.ansi[i]; });
+    term.options.theme = xterm;
+
+    if (t.font_family) {
+      term.options.fontFamily = '"' + t.font_family +
+        '", Menlo, Consolas, ui-monospace, monospace';
+    }
+    // The host's size is the default; a manual choice still wins.
+    if (!manualFont && t.font_size) {
+      term.options.fontSize = t.font_size;
+      showFontSize();
+    }
+  }
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -203,6 +256,11 @@
 
   function renderState() {
     if (!state) return;
+    applyTheme(state.theme);
+    if (state.title) {
+      $('brand').textContent = state.title.split('—')[0].trim() || 'TigridenR';
+      document.title = state.title;
+    }
     var session = state.sessions[state.active_session];
     $('session-name').textContent = session ? '— ' + session.name : '';
     renderTabs(session);

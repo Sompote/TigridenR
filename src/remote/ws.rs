@@ -119,6 +119,48 @@ pub fn handle(stream: TcpStream, host: Arc<dyn RemoteHost>, shutdown: Arc<Atomic
     }
 }
 
+/// Max bytes of a file served to remote clients.
+const FILE_CAP: usize = 512 * 1024;
+
+/// Reads a file for the web viewer. Only paths inside a published session
+/// root are served — the tree rows are the only legitimate source of paths.
+fn read_file_reply(path: &str) -> serde_json::Value {
+    let fail = |msg: &str| serde_json::json!({ "t": "file", "path": path, "error": msg });
+    let Ok(canonical) = std::path::Path::new(path).canonicalize() else {
+        return fail("file not found");
+    };
+    let roots = super::state::ROOTS.lock().unwrap().clone();
+    let allowed = roots.iter().any(|root| {
+        std::path::Path::new(root)
+            .canonicalize()
+            .is_ok_and(|r| canonical.starts_with(&r))
+    });
+    if !allowed {
+        return fail("outside session folders");
+    }
+    let bytes = match std::fs::read(&canonical) {
+        Ok(b) => b,
+        Err(err) => return fail(&err.to_string()),
+    };
+    let truncated = bytes.len() > FILE_CAP;
+    let slice = &bytes[..bytes.len().min(FILE_CAP)];
+    let text = match std::str::from_utf8(slice) {
+        Ok(text) => text,
+        // The cap may have split a multibyte char; keep the valid prefix.
+        Err(e) if truncated && e.valid_up_to() + 4 >= slice.len() => {
+            std::str::from_utf8(&slice[..e.valid_up_to()]).unwrap_or_default()
+        }
+        // Genuinely non-UTF-8; images etc. are out of scope.
+        Err(_) => return fail("binary file"),
+    };
+    serde_json::json!({
+        "t": "file",
+        "path": path,
+        "content": text,
+        "truncated": truncated,
+    })
+}
+
 /// Output frame: 8-byte little-endian term id, then raw PTY bytes.
 fn term_frame(id: u64, bytes: &[u8]) -> Vec<u8> {
     let mut frame = Vec::with_capacity(8 + bytes.len());
@@ -181,6 +223,15 @@ fn handle_message(
                 });
             }
         }
+        "open_file" => {
+            if let Some(path) = msg["path"].as_str() {
+                let reply = read_file_reply(path);
+                if ws.send(Message::Text(reply.to_string().into())).is_err() {
+                    return false;
+                }
+            }
+        }
+        "toggle_changes" => host.command(Cmd::ToggleChanges),
         "select_session" => host.command(Cmd::SelectSession(idx("idx"))),
         "select_term" => host.command(Cmd::SelectTerm { session: idx("session"), tab: idx("tab") }),
         "new_term" => host.command(Cmd::NewTerm { session: idx("session") }),

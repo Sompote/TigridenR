@@ -33,6 +33,10 @@ pub struct UiTreeRow {
     pub expanded: bool,
     pub session: i32,
     pub row_id: i32,
+    /// Absolute path for file rows (kind 2) so remote clients can request the
+    /// content; None for everything else.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 pub struct StateHub {
@@ -43,8 +47,13 @@ pub static HUB: LazyLock<StateHub> = LazyLock::new(|| StateHub {
     inner: Mutex::new((0, String::new())),
 });
 
+/// Session roots from the last published state; file-read requests are only
+/// honored for paths inside one of these.
+pub static ROOTS: LazyLock<Mutex<Vec<String>>> = LazyLock::new(|| Mutex::new(Vec::new()));
+
 impl StateHub {
     pub fn publish(&self, state: &UiState) {
+        *ROOTS.lock().unwrap() = state.sessions.iter().map(|s| s.root.clone()).collect();
         let mut value = match serde_json::to_value(state) {
             Ok(v) => v,
             Err(_) => return,

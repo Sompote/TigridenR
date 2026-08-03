@@ -13,6 +13,7 @@ pub enum Cmd {
     CloseTerm { session: usize, tab: usize },
     Preset(usize),
     RowToggle(i32),
+    ToggleChanges,
 }
 
 pub trait RemoteHost: Send + Sync {
@@ -44,12 +45,10 @@ impl RemoteHost for GuiHost {
                     app.set_active(session);
                     app.new_terminal_active();
                 }
-                Cmd::CloseTerm { session, tab } => {
-                    app.set_active(session);
-                    app.close_terminal(tab);
-                }
+                Cmd::CloseTerm { session, tab } => app.close_terminal_remote(session, tab),
                 Cmd::Preset(idx) => app.preset_clicked(idx),
                 Cmd::RowToggle(row) => app.row_toggled(row),
+                Cmd::ToggleChanges => app.toggle_changes(),
             });
         });
     }

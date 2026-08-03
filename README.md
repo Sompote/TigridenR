@@ -28,7 +28,7 @@ The desktop app and every browser client share the **same live shells** — it's
 **What the web page gives you** (same dark theme, same orange accent):
 
 - The **terminal** (xterm.js) with full TUI support — attaching mid-`vim` or mid-agent-session replays the current screen (plus up to 2,000 lines of recent scrollback) straight from the terminal grid, so you never land on a blank page.
-- The **agent sidebar** — your folders and their browseable file trees (tap to expand/collapse), plus the live **Changes (N)** list of what the agent touched. Read-only by design: inspecting and steering happens in the terminal; there is no web editor.
+- The **agent sidebar** — your folders and their browseable file trees (tap to expand/collapse), the live **Changes (N)** list of what the agent touched (with a toggle button), and a **tap-to-view file reader**: tap any file to read its contents full-screen (text files, capped at 512 KB; viewing only — editing stays on the desktop).
 - **Terminal tabs and preset buttons** — switch folders and shells, open or close terminals, and launch `claude`/`codex`/`gemini` with one tap.
 - A **phone-friendly layout** — drawer sidebar, soft-keyboard button, a ⟳ resync button, and font auto-fit to the host's grid width.
 
@@ -61,7 +61,7 @@ Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.
 ## Features (the local half)
 
 - **One-click agents** — preset buttons type the agent command into the terminal for you (fully configurable).
-- **Multiple terminals per folder** — the `+` tab spawns extra shells in the same workspace, so one agent can run while you use a second terminal for git, tests, or another agent.
+- **Multiple terminals per folder** — the `+` tab spawns extra shells in the same workspace, so one agent can run while you use a second terminal for git, tests, or another agent. Tabs are switch-only; closing has its own **✕** button beside **+** and always asks first, so a mis-click can't kill a running agent.
 - **Real terminal** — VTE-compliant emulation ([alacritty_terminal](https://crates.io/crates/alacritty_terminal) + a real PTY). TUIs like `vim`, `top`, and the Claude Code interface just work, including bracketed paste and truecolor. Select with the mouse and Cmd+C to copy out; Cmd+V pastes text in, and image paste into Claude Code works with Ctrl+V (the agent reads your clipboard directly).
 - **Live file tree** — gitignore-aware, refreshes automatically as agents create and delete files. Right-click any entry for New File/Folder, Reveal in Finder, Open in Default App, Copy (Relative) Path, Duplicate, Rename, and Move to Trash.
 - **File change tracking & rollback** — **File ▸ Show Changes Panel** lists every file the agent modified/added/deleted since the baseline, updated within ~1 s. Click a row for a syntax-highlighted diff; discard one file or the whole run, always behind a confirmation. Git folders compare against the last commit; folders **without git get invisible shadow snapshots** (stored in the app's data dir — your folder stays untouched, the agent never sees them).
@@ -105,7 +105,7 @@ macOS is the primary target; Linux/Windows are untested but the stack is cross-p
 1. Click **+ Add folder** and pick a project directory — a login shell opens there.
 2. Click a preset button (e.g. **claude**) to launch the agent, or type any command.
 3. Watch the file tree update as the agent works; click any file to inspect or tweak it.
-4. Click **+** in the terminal tab strip for more shells in the same folder; add more folders for more agents in parallel.
+4. Click **+** in the terminal tab strip for more shells in the same folder; **✕** (next to **+**) closes the active one after a confirmation. Add more folders for more agents in parallel.
 5. **File ▸ Remote Access… ▸ Enable**, open the URL on your phone, and walk away — the session comes with you.
 
 ### Track & roll back what the agent changes
@@ -115,7 +115,7 @@ macOS is the primary target; Linux/Windows are untested but the stack is cross-p
 3. Changed files appear within ~1 s as `M` / `A` / `D` rows. **Click a row** for the accumulated diff; the **File** chip jumps to the editable file.
 4. **Right-click ▸ Discard Changes…** reverts one file; the **↺** button reverts the whole run. Both confirm first.
 
-The Changes list is mirrored to remote clients too — you can see what the agent touched from your phone before telling it to continue. (In GUI mode it appears remotely once the desktop panel is enabled; in `--headless` mode change tracking is always on.) Viewing diffs and discarding changes stay desktop-only for now.
+The Changes list is mirrored to remote clients too — the **Changes** button in the web sidebar toggles the panel, so you can see what the agent touched (and read the files it wrote) from your phone before telling it to continue. (In `--headless` mode change tracking is always on.) Viewing diffs and discarding changes stay desktop-only for now.
 
 ### Keys
 
@@ -190,7 +190,7 @@ The remote layer (`src/remote/`, default-on `remote` feature) is a loopback-only
 - [ ] Editor tabs (currently one open file per session)
 - [ ] PDF page rendering (currently text extraction)
 - [ ] Linux / Windows testing
-- [ ] Web: editor pane, diff viewer, and discard actions (currently terminal + read-only sidebar)
+- [ ] Web: file editing, diff viewer, and discard actions (currently terminal + file viewing)
 - [ ] Web: adding/removing folders remotely (folders come from the desktop or the last saved session)
 - [ ] Web: mirror a window other than the primary one
 

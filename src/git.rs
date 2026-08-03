@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// How a session's changes are tracked.
 #[derive(Clone, Debug, PartialEq)]
@@ -52,13 +52,27 @@ fn git_cmd(root: &Path, tracking: &Tracking) -> Command {
     cmd
 }
 
+/// Same as `git_cmd` but silenced — for calls run with `.status()`, whose
+/// output would otherwise leak into the app's own stdout/stderr.
+fn git_quiet(root: &Path, tracking: &Tracking) -> Command {
+    let mut cmd = git_cmd(root, tracking);
+    cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    cmd
+}
+
 /// Creates the shadow repo if missing and commits the folder's current state
 /// as the baseline everything is compared against. Never call on the event
 /// loop — the first snapshot of a big folder takes a while.
 pub fn snapshot_baseline(root: &Path, dir: &Path) {
     if !dir.join("HEAD").exists() {
         let _ = std::fs::create_dir_all(dir);
-        let _ = Command::new("git").arg("--git-dir").arg(dir).args(["init", "-q"]).status();
+        let _ = Command::new("git")
+            .arg("--git-dir")
+            .arg(dir)
+            .args(["init", "-q"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
         // Keep bulky generated dirs out of snapshots.
         let _ = std::fs::create_dir_all(dir.join("info"));
         let _ = std::fs::write(
@@ -67,8 +81,8 @@ pub fn snapshot_baseline(root: &Path, dir: &Path) {
         );
     }
     let tracking = Tracking::Shadow(dir.to_path_buf());
-    let _ = git_cmd(root, &tracking).args(["add", "-A"]).status();
-    let _ = git_cmd(root, &tracking)
+    let _ = git_quiet(root, &tracking).args(["add", "-A"]).status();
+    let _ = git_quiet(root, &tracking)
         .args([
             "-c",
             "user.name=tigridenr",
@@ -164,7 +178,7 @@ pub fn discard_all(root: &Path, tracking: &Tracking, changes: &[Change]) {
     let restore: Vec<&str> =
         changes.iter().filter(|c| c.status != 'A').map(|c| c.rel.as_str()).collect();
     if !restore.is_empty() {
-        let mut cmd = git_cmd(root, tracking);
+        let mut cmd = git_quiet(root, tracking);
         cmd.args(["checkout", "HEAD", "--"]);
         for rel in restore {
             cmd.arg(rel);
@@ -172,7 +186,7 @@ pub fn discard_all(root: &Path, tracking: &Tracking, changes: &[Change]) {
         let _ = cmd.status();
     }
     for change in changes.iter().filter(|c| c.status == 'A') {
-        let _ = git_cmd(root, tracking).args(["reset", "-q", "HEAD", "--"]).arg(&change.rel).status();
+        let _ = git_quiet(root, tracking).args(["reset", "-q", "HEAD", "--"]).arg(&change.rel).status();
         let _ = std::fs::remove_file(change.abs(root));
     }
 }
@@ -183,9 +197,9 @@ pub fn discard_all(root: &Path, tracking: &Tracking, changes: &[Change]) {
 pub fn discard(root: &Path, tracking: &Tracking, path: &Path, status: char) {
     if status == 'A' {
         // Unstage if staged (harmless otherwise), then remove from disk.
-        let _ = git_cmd(root, tracking).args(["reset", "-q", "HEAD", "--"]).arg(path).status();
+        let _ = git_quiet(root, tracking).args(["reset", "-q", "HEAD", "--"]).arg(path).status();
         let _ = std::fs::remove_file(path);
     } else {
-        let _ = git_cmd(root, tracking).args(["checkout", "HEAD", "--"]).arg(path).status();
+        let _ = git_quiet(root, tracking).args(["checkout", "HEAD", "--"]).arg(path).status();
     }
 }

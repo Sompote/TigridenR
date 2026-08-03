@@ -73,6 +73,7 @@
         else if (msg.t === 'exited') {
           if (msg.term === currentTerm) showOverlay('shell exited');
         }
+        else if (msg.t === 'file') { showFile(msg); }
       } else {
         var bytes = new Uint8Array(ev.data);
         var id = 0;
@@ -115,18 +116,57 @@
     return { w: term.options.fontSize * 0.6, h: term.options.fontSize * 1.35 };
   }
 
-  // Host owns the grid: pick the largest font that fits the host's columns.
+  // Host owns the grid: pick the largest font that fits its columns, but
+  // never shrink below MIN_FIT — an unreadable wall of text is worse than
+  // scrolling sideways.
+  var MIN_FIT = 11, MIN_FONT = 8, MAX_FONT = 32;
+
   function fitFont(cols) {
+    if (manualFont) { term.options.fontSize = manualFont; return; }
     var wrap = $('term-wrap');
     var avail = wrap.clientWidth - 10;
     if (avail <= 0 || !cols) return;
     var cell = cellSize();
     var ideal = Math.floor(term.options.fontSize * avail / (cols * cell.w));
-    term.options.fontSize = Math.max(7, Math.min(18, ideal));
+    term.options.fontSize = Math.max(MIN_FIT, Math.min(18, ideal));
+    showFontSize();
   }
 
-  // Headless: the client drives the PTY size from its own viewport.
+  // ---- font size control ----
+
+  var FONT_KEY = 'tigridenr.fontSize';
+  var manualFont = parseFloat(localStorage.getItem(FONT_KEY)) || 0; // 0 = auto-fit
+
+  function showFontSize() {
+    var el = $('font-size');
+    el.textContent = Math.round(term.options.fontSize);
+    el.className = manualFont ? '' : 'auto';
+  }
+
+  function nudgeFont(delta) {
+    var next = (manualFont || term.options.fontSize) + delta;
+    manualFont = Math.max(MIN_FONT, Math.min(MAX_FONT, next));
+    localStorage.setItem(FONT_KEY, manualFont);
+    term.options.fontSize = manualFont;
+    showFontSize();
+    if (resizable && currentTerm) fitResize();
+  }
+
+  function autoFont() {
+    manualFont = 0;
+    localStorage.removeItem(FONT_KEY);
+    if (currentTerm) { if (resizable) fitResize(); else fitFont(term.cols); }
+    showFontSize();
+  }
+
+  $('font-dec').onclick = function () { nudgeFont(-1); };
+  $('font-inc').onclick = function () { nudgeFont(1); };
+  $('font-size').onclick = autoFont;
+
+  // Headless: the client drives the PTY size from its own viewport, at
+  // whatever font size the user chose.
   function fitResize() {
+    if (manualFont) term.options.fontSize = manualFont;
     var wrap = $('term-wrap');
     var cell = cellSize();
     var cols = Math.max(2, Math.floor((wrap.clientWidth - 10) / cell.w));
@@ -135,14 +175,20 @@
       term.resize(cols, rows);
       send({ t: 'resize', term: currentTerm, cols: cols, rows: rows });
     }
+    showFontSize();
   }
 
   var resizeTimer = null;
   function onViewportChange() {
-    // Keep the app above the iOS soft keyboard.
-    if (window.visualViewport) {
-      document.getElementById('app').style.height = window.visualViewport.height + 'px';
+    // Force the app height only while the soft keyboard shrinks the visual
+    // viewport (mobile); otherwise let CSS 100dvh own the layout so the
+    // bottom bar always sits at the window edge on desktop.
+    var app = document.getElementById('app');
+    if (window.visualViewport && window.visualViewport.height < window.innerHeight - 50) {
+      app.style.height = window.visualViewport.height + 'px';
       window.scrollTo(0, 0);
+    } else {
+      app.style.height = '';
     }
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
@@ -173,26 +219,17 @@
     }
   }
 
+  // Tabs switch only — closing has its own button next to "+", so a mis-tap
+  // can't kill a shell.
   function renderTabs(session) {
     var tabs = $('tabs');
     tabs.textContent = '';
+    $('close-term').className = session && session.terms.length > 1 ? '' : 'hidden';
     if (!session) return;
     session.terms.forEach(function (id, i) {
       var tab = document.createElement('button');
       tab.className = 'tab' + (i === session.active_term ? ' active' : '');
-      var label = document.createElement('span');
-      label.textContent = String(i + 1);
-      tab.appendChild(label);
-      if (session.terms.length > 1) {
-        var close = document.createElement('span');
-        close.className = 'close';
-        close.textContent = '✕';
-        close.onclick = function (ev) {
-          ev.stopPropagation();
-          send({ t: 'close_term', session: state.active_session, tab: i });
-        };
-        tab.appendChild(close);
-      }
+      tab.textContent = String(i + 1);
       tab.onclick = function () {
         send({ t: 'select_term', session: state.active_session, tab: i });
       };
@@ -233,6 +270,12 @@
         el.onclick = function () { send({ t: 'row_toggle', row: row.row_id }); };
       } else if (row.kind === 2) {
         el.className = 'row file';
+        if (row.path) {
+          el.onclick = function () {
+            send({ t: 'open_file', path: row.path });
+            closeSidebar();
+          };
+        }
       } else if (row.kind === 3) {
         el.className = 'row changes-header';
       } else {
@@ -257,6 +300,20 @@
   }
   function hideOverlay() { $('overlay').className = 'hidden'; }
 
+  // ---- file viewer ----
+
+  function showFile(msg) {
+    var name = (msg.path || '').split('/').pop();
+    $('file-name').textContent = name + (msg.truncated ? ' (truncated)' : '');
+    $('file-content').textContent =
+      msg.error ? '— ' + msg.error + ' —' : msg.content;
+    $('file-view').className = '';
+  }
+  $('file-close').onclick = function () {
+    $('file-view').className = 'hidden';
+    term.focus();
+  };
+
   // ---- top bar / sidebar ----
 
   function closeSidebar() {
@@ -268,12 +325,55 @@
     $('scrim').classList.toggle('open');
   };
   $('scrim').onclick = closeSidebar;
+  $('changes-btn').onclick = function () { send({ t: 'toggle_changes' }); };
   $('kbd-btn').onclick = function () { term.focus(); };
   $('resync-btn').onclick = resync;
   $('new-term').onclick = function () {
     if (state) send({ t: 'new_term', session: state.active_session });
   };
 
+  // ---- confirmation bar ----
+
+  var confirmAction = null;
+
+  function askConfirm(text, okLabel, action) {
+    $('confirm-text').textContent = text;
+    $('confirm-ok').textContent = okLabel;
+    confirmAction = action;
+    $('confirm').className = '';
+  }
+
+  function hideConfirm() {
+    confirmAction = null;
+    $('confirm').className = 'hidden';
+  }
+
+  $('confirm-cancel').onclick = hideConfirm;
+  $('confirm-ok').onclick = function () {
+    var action = confirmAction;
+    hideConfirm();
+    if (action) action();
+  };
+
+  $('close-term').onclick = function () {
+    if (!state) return;
+    var session = state.sessions[state.active_session];
+    if (!session || session.terms.length <= 1) return;
+    var tab = session.active_term;
+    var exited = session.exited[tab];
+    askConfirm(
+      'Close terminal ' + (tab + 1) + '? ' +
+        (exited ? 'Its shell has already exited.'
+                : 'Its shell (and anything running in it) will be stopped.'),
+      'Close',
+      function () {
+        send({ t: 'close_term', session: state.active_session, tab: tab });
+      }
+    );
+  };
+
+  if (manualFont) term.options.fontSize = manualFont;
+  showFontSize();
   onViewportChange();
   connect();
 })();

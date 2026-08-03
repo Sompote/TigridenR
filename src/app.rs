@@ -100,6 +100,9 @@ enum Banner {
     DiskChanged,
     ConfirmDiscard(usize, PathBuf, char),
     ConfirmDiscardAll(usize),
+    /// (session index, terminal tab) — closing a terminal kills its shell, so
+    /// it is always confirmed.
+    ConfirmCloseTerm(usize, usize),
 }
 
 /// What the name-input dialog will do with the entered name.
@@ -475,8 +478,26 @@ impl App {
         }
     }
 
+    /// Asks before killing the shell; the actual close happens in
+    /// `really_close_terminal` once confirmed.
     pub fn close_terminal(&mut self, tab: usize) {
-        let Some(session) = self.sessions.get_mut(self.active) else { return };
+        let Some(session) = self.sessions.get(self.active) else { return };
+        if session.terms.len() <= 1 || tab >= session.terms.len() {
+            return;
+        }
+        self.show_banner(Banner::ConfirmCloseTerm(self.active, tab));
+    }
+
+    /// Close requested by a remote client, which ran its own confirmation —
+    /// going through the desktop banner would strand it waiting on a dialog
+    /// only the desktop can answer.
+    #[cfg(feature = "remote")]
+    pub fn close_terminal_remote(&mut self, idx: usize, tab: usize) {
+        self.really_close_terminal(idx, tab);
+    }
+
+    fn really_close_terminal(&mut self, idx: usize, tab: usize) {
+        let Some(session) = self.sessions.get_mut(idx) else { return };
         // The last terminal of a session can only go by closing the session.
         if session.terms.len() <= 1 || tab >= session.terms.len() {
             return;
@@ -689,6 +710,10 @@ impl App {
                     expanded: r.expanded,
                     session: r.session,
                     row_id: r.row_id,
+                    path: match self.row_map.get(r.row_id as usize) {
+                        Some(RowTarget::File(_, path)) => Some(path.display().to_string()),
+                        _ => None,
+                    },
                 })
                 .collect();
         }
@@ -1650,6 +1675,26 @@ impl App {
                     "Cancel",
                 )
             }
+            Banner::ConfirmCloseTerm(idx, tab) => {
+                let running = self
+                    .sessions
+                    .get(*idx)
+                    .and_then(|s| s.terms.get(*tab))
+                    .is_some_and(|t| !t.term.exited.load(Ordering::Acquire));
+                (
+                    format!(
+                        "Close terminal {}? {}",
+                        tab + 1,
+                        if running {
+                            "Its shell (and anything running in it) will be stopped."
+                        } else {
+                            "Its shell has already exited."
+                        }
+                    ),
+                    "Close",
+                    "Cancel",
+                )
+            }
             Banner::None => (String::new(), "", ""),
         };
         self.banner = banner;
@@ -1698,6 +1743,7 @@ impl App {
                     });
                 });
             }
+            Banner::ConfirmCloseTerm(idx, tab) => self.really_close_terminal(idx, tab),
             Banner::ConfirmDiscardAll(idx) => {
                 let (root, tracking, changes) = match self.sessions.get(idx) {
                     Some(session) => match &session.tracking {
@@ -1745,7 +1791,9 @@ impl App {
                         std::fs::metadata(&editor.path).and_then(|m| m.modified()).ok();
                 }
             }
-            Banner::ConfirmDiscard(..) | Banner::ConfirmDiscardAll(..) => {} // Cancel
+            Banner::ConfirmDiscard(..)
+            | Banner::ConfirmDiscardAll(..)
+            | Banner::ConfirmCloseTerm(..) => {} // Cancel
             Banner::None => {}
         }
         self.show_banner(Banner::None);
@@ -1927,9 +1975,28 @@ impl App {
             ui.set_remote_url(SharedString::from(format!("http://127.0.0.1:{port}")));
         }
         let app_id = self.id;
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_done = done.clone();
         std::thread::spawn(move || {
             let status = crate::remote::tailscale::enable(port);
+            worker_done.store(true, Ordering::Release);
             let _ = slint::invoke_from_event_loop(move || {
+                with_app_id(app_id, |app| app.remote_ts_status(status, port));
+            });
+        });
+        // Watchdog: never leave the dialog stuck on "Starting…" if the
+        // tailscale CLI blocks (e.g. waiting on an interactive prompt). The
+        // done flag is re-checked on the UI thread so a result landing just
+        // before the deadline still wins.
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(20));
+            let _ = slint::invoke_from_event_loop(move || {
+                if done.load(Ordering::Acquire) {
+                    return;
+                }
+                let status = crate::remote::tailscale::TsStatus::Error(
+                    "tailscale serve timed out — the local URL below still works".into(),
+                );
                 with_app_id(app_id, |app| app.remote_ts_status(status, port));
             });
         });
@@ -1938,13 +2005,17 @@ impl App {
     #[cfg(feature = "remote")]
     fn remote_ts_status(&mut self, status: crate::remote::tailscale::TsStatus, port: u16) {
         let Some(ui) = self.ui() else { return };
-        use crate::remote::tailscale::TsStatus;
+        // A late result must not overwrite an already-successful one (the
+        // watchdog and the worker can both report).
+        if !ui.get_remote_enabled() {
+            return;
+        }
         ui.set_remote_status(SharedString::from(status.label()));
-        match status {
-            TsStatus::Serving { url } => ui.set_remote_url(SharedString::from(url)),
+        match status.url() {
+            Some(url) => ui.set_remote_url(SharedString::from(url)),
             // Local server keeps running; useful on the machine itself and
             // for LAN-free testing.
-            _ => ui.set_remote_url(SharedString::from(format!(
+            None => ui.set_remote_url(SharedString::from(format!(
                 "http://127.0.0.1:{port} (this machine only)"
             ))),
         }

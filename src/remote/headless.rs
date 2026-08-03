@@ -144,6 +144,7 @@ impl Manager {
                 expanded: true,
                 session: i as i32,
                 row_id: self.row_map.len() as i32,
+                path: None,
             });
             self.row_map.push(RowTarget::Session(i));
             let _ = active;
@@ -156,6 +157,7 @@ impl Manager {
                     expanded: true,
                     session: i as i32,
                     row_id: self.row_map.len() as i32,
+                    path: None,
                 });
                 self.row_map.push(RowTarget::Inert);
                 for change in &self.sessions[i].changes {
@@ -166,6 +168,7 @@ impl Manager {
                         expanded: false,
                         session: i as i32,
                         row_id: self.row_map.len() as i32,
+                        path: None,
                     });
                     self.row_map.push(RowTarget::Inert);
                 }
@@ -178,6 +181,7 @@ impl Manager {
                     expanded: flat.expanded,
                     session: i as i32,
                     row_id: self.row_map.len() as i32,
+                    path: (flat.kind == 2).then(|| flat.path.display().to_string()),
                 });
                 self.row_map.push(if flat.kind == 1 {
                     RowTarget::Dir(i, flat.path)
@@ -285,6 +289,8 @@ impl RemoteHost for HeadlessHost {
                 }
                 return;
             }
+            // Change tracking is always on in headless mode.
+            Cmd::ToggleChanges => return,
             Cmd::RowToggle(row) => {
                 if row < 0 {
                     return;

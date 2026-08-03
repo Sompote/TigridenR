@@ -16,22 +16,41 @@
     <span id="brand">TigridenR</span>
     <span id="session-name"></span>
     <span class="spacer"></span>
+    <button id="font-dec" class="font-btn" title="Smaller text">A−</button>
+    <span id="font-size" title="Tap to auto-fit">13</span>
+    <button id="font-inc" class="font-btn" title="Larger text">A+</button>
     <button id="kbd-btn" title="Show keyboard">⌨</button>
     <button id="resync-btn" title="Resync terminal">⟳</button>
     <span id="conn-dot" class="off" title="Connection"></span>
   </header>
   <div id="body">
     <aside id="sidebar">
-      <div id="sidebar-head">AGENTS</div>
+      <div id="sidebar-head">
+        <span>AGENTS</span>
+        <button id="changes-btn" title="Show/hide the Changes panel">Changes</button>
+      </div>
       <div id="tree"></div>
     </aside>
     <div id="scrim"></div>
     <main id="main">
       <div id="term-wrap"><div id="term"></div></div>
       <div id="overlay" class="hidden"></div>
+      <div id="confirm" class="hidden">
+        <span id="confirm-text"></span>
+        <button id="confirm-cancel">Cancel</button>
+        <button id="confirm-ok">Close</button>
+      </div>
+      <div id="file-view" class="hidden">
+        <div id="file-head">
+          <span id="file-name"></span>
+          <button id="file-close" title="Close">✕</button>
+        </div>
+        <pre id="file-content"></pre>
+      </div>
       <footer id="termbar">
         <div id="tabs"></div>
         <button id="new-term" title="New terminal">+</button>
+        <button id="close-term" class="hidden" title="Close the active terminal">✕</button>
         <div class="divider"></div>
         <div id="presets"></div>
       </footer>

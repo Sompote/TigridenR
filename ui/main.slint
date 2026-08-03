@@ -393,8 +393,11 @@ export component MainWindow inherits Window {
                                 spacing: 4px;
                                 alignment: start;
 
+                                // Tabs are switch-only; closing lives in its
+                                // own button beside "+" so a mis-click can't
+                                // kill a shell.
                                 for label[i] in root.term-tabs: tab-touch := TouchArea {
-                                    width: root.term-tabs.length > 1 && self.has-hover ? 46px : 30px;
+                                    width: 30px;
                                     Rectangle {
                                         y: 4px;
                                         height: 22px;
@@ -410,17 +413,6 @@ export component MainWindow inherits Window {
                                                 color: i == root.active-term ? Theme.text : Theme.text-dim;
                                                 font-size: 11px;
                                                 vertical-alignment: center;
-                                            }
-                                            if root.term-tabs.length > 1 && tab-touch.has-hover: TouchArea {
-                                                width: 14px;
-                                                Text {
-                                                    text: "✕";
-                                                    color: Theme.text-dim;
-                                                    font-size: 9px;
-                                                    vertical-alignment: center;
-                                                    horizontal-alignment: center;
-                                                }
-                                                clicked => { root.close-terminal(i); }
                                             }
                                         }
                                     }
@@ -443,6 +435,27 @@ export component MainWindow inherits Window {
                                         }
                                     }
                                     clicked => { root.new-terminal(); }
+                                }
+
+                                // Closes the *active* terminal, after a
+                                // confirmation banner. Only shown when there
+                                // is more than one tab.
+                                if root.term-tabs.length > 1: close-term-touch := TouchArea {
+                                    width: 24px;
+                                    Rectangle {
+                                        y: 4px;
+                                        height: 22px;
+                                        border-radius: 4px;
+                                        background: close-term-touch.has-hover ? Theme.panel-hover : transparent;
+                                        Text {
+                                            text: "✕";
+                                            color: close-term-touch.has-hover ? Theme.text : Theme.text-dim;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                            horizontal-alignment: center;
+                                        }
+                                    }
+                                    clicked => { root.close-terminal(root.active-term); }
                                 }
 
                                 Rectangle {

@@ -53,6 +53,8 @@ jobs:
           key: ${{ matrix.target }}
 
       # Slint's winit/femtovg backend needs X11/Wayland and font headers.
+      # (rfd's Linux backend is pinned to xdg-portal in Cargo.toml, so no GTK
+      # development packages are required.)
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |

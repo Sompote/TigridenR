@@ -36,6 +36,12 @@ png = { version = "0.18", optional = true }
 tungstenite = { version = "0.24", default-features = false, features = ["handshake"], optional = true }
 serde_json = { version = "1", optional = true }
 
+# rfd needs an explicit backend on Linux. The XDG desktop portal keeps GTK out
+# of the build (and off the runtime dependency list); pollster drives its async
+# API from our synchronous call sites.
+[target.'cfg(target_os = "linux")'.dependencies]
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal", "pollster"] }
+
 [target.'cfg(unix)'.dependencies]
 # Signal handling for headless mode, so Ctrl-C removes the tailscale serve
 # config instead of leaving the published URL pointing at a dead port.

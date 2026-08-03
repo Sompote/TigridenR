@@ -145,7 +145,7 @@ Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.
 
 ## Install
 
-No Rust needed — prebuilt binaries for every platform are on the [latest release](https://github.com/Sompote/TigridenR/releases/latest).
+No Rust needed — prebuilt binaries for every platform are on the [latest release](https://github.com/Sompote/TigridenR/releases/latest) (currently [v0.1.1](https://github.com/Sompote/TigridenR/releases/tag/v0.1.1)).
 
 | Download | For |
 |---|---|

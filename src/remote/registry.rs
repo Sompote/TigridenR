@@ -42,6 +42,18 @@ pub fn write(id: u64, bytes: Vec<u8>) -> bool {
     }
 }
 
+/// Reads a terminal's current mode (for bracketed-paste decisions) without
+/// exposing the lock to callers.
+pub fn with_term_mode<T>(
+    id: u64,
+    f: impl FnOnce(alacritty_terminal::term::TermMode) -> T,
+) -> Option<T> {
+    let map = ENDPOINTS.lock().unwrap();
+    let ep = map.get(&id)?;
+    let mode = *ep.term.lock().mode();
+    Some(f(mode))
+}
+
 /// Atomically snapshots the current grid as ANSI and subscribes to the raw
 /// output stream. Lock order (term, then taps) matches the PTY reader thread,
 /// so the snapshot and the stream are gap-free and duplicate-free.

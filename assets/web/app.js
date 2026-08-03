@@ -127,6 +127,8 @@
           if (msg.term === currentTerm) showOverlay('shell exited');
         }
         else if (msg.t === 'file') { showFile(msg); }
+        else if (msg.t === 'uploaded') { flash('attached ' + msg.name); }
+        else if (msg.t === 'upload_error') { flash('attach failed: ' + msg.msg); }
       } else {
         var bytes = new Uint8Array(ev.data);
         var id = 0;
@@ -358,6 +360,19 @@
   }
   function hideOverlay() { $('overlay').className = 'hidden'; }
 
+  // Transient note that restores whatever the overlay was showing before.
+  var flashTimer = null;
+  function flash(text) {
+    var el = $('overlay');
+    var wasHidden = el.className === 'hidden';
+    var previous = el.textContent;
+    showOverlay(text);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () {
+      if (wasHidden) hideOverlay(); else showOverlay(previous);
+    }, 2500);
+  }
+
   // ---- file viewer ----
 
   function showFile(msg) {
@@ -389,6 +404,76 @@
   $('new-term').onclick = function () {
     if (state) send({ t: 'new_term', session: state.active_session });
   };
+
+  // ---- attaching files to the agent ----
+  //
+  // A browser never exposes the real path of a dropped file, and it is usually
+  // running on a different machine anyway — so the bytes go to the host, which
+  // saves them and types *its* path into the terminal, the same thing a
+  // desktop drag-and-drop does.
+
+  var UPLOAD_CAP = 25 * 1024 * 1024;
+
+  function sendFile(file) {
+    if (!currentTerm) { flash('no terminal to attach to'); return; }
+    if (file.size > UPLOAD_CAP) { flash(file.name + ' is over the 25 MB limit'); return; }
+    file.arrayBuffer().then(function (buf) {
+      var name = new TextEncoder().encode(file.name || 'upload');
+      var frame = new Uint8Array(12 + name.length + buf.byteLength);
+      var view = new DataView(frame.buffer);
+      view.setBigUint64(0, BigInt(currentTerm), true);
+      view.setUint32(8, name.length, true);
+      frame.set(name, 12);
+      frame.set(new Uint8Array(buf), 12 + name.length);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(frame);
+    }).catch(function () { flash('could not read ' + file.name); });
+  }
+
+  function sendFiles(files) {
+    for (var i = 0; i < files.length; i++) sendFile(files[i]);
+  }
+
+  // Drag and drop over the terminal (desktop browsers).
+  var dragDepth = 0;
+  function hasFiles(ev) {
+    var dt = ev.dataTransfer;
+    return dt && Array.prototype.indexOf.call(dt.types || [], 'Files') !== -1;
+  }
+  window.addEventListener('dragenter', function (ev) {
+    if (!hasFiles(ev)) return;
+    ev.preventDefault();
+    dragDepth++;
+    $('dropzone').className = '';
+  });
+  window.addEventListener('dragover', function (ev) {
+    if (hasFiles(ev)) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; }
+  });
+  window.addEventListener('dragleave', function () {
+    // dragleave also fires moving between children, so count enters/leaves.
+    if (--dragDepth <= 0) { dragDepth = 0; $('dropzone').className = 'hidden'; }
+  });
+  window.addEventListener('drop', function (ev) {
+    if (!hasFiles(ev)) return;
+    ev.preventDefault();
+    dragDepth = 0;
+    $('dropzone').className = 'hidden';
+    sendFiles(ev.dataTransfer.files);
+    term.focus();
+  });
+
+  // Phones can't drag: the 📎 button opens the photo library / camera / Files.
+  $('attach-btn').onclick = function () { $('file-input').click(); };
+  $('file-input').onchange = function (ev) {
+    sendFiles(ev.target.files);
+    ev.target.value = '';   // let the same file be picked twice
+    term.focus();
+  };
+
+  // Pasting an image (screenshot in the clipboard) attaches it too.
+  window.addEventListener('paste', function (ev) {
+    var items = (ev.clipboardData && ev.clipboardData.files) || [];
+    if (items.length) { ev.preventDefault(); sendFiles(items); }
+  });
 
   // ---- confirmation bar ----
 

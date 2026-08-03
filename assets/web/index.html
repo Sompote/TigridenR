@@ -19,6 +19,7 @@
     <button id="font-dec" class="font-btn" title="Smaller text">A−</button>
     <span id="font-size" title="Tap to auto-fit">13</span>
     <button id="font-inc" class="font-btn" title="Larger text">A+</button>
+    <button id="attach-btn" title="Attach a file to the agent">📎</button>
     <button id="kbd-btn" title="Show keyboard">⌨</button>
     <button id="resync-btn" title="Resync terminal">⟳</button>
     <span id="conn-dot" class="off" title="Connection"></span>
@@ -35,6 +36,8 @@
     <main id="main">
       <div id="term-wrap"><div id="term"></div></div>
       <div id="overlay" class="hidden"></div>
+      <div id="dropzone" class="hidden"><span>Release to attach — the file is copied to the host and its path typed in</span></div>
+      <input id="file-input" type="file" multiple hidden>
       <div id="confirm" class="hidden">
         <span id="confirm-text"></span>
         <button id="confirm-cancel">Cancel</button>

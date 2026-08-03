@@ -30,6 +30,7 @@ The desktop app and every browser client share the **same live shells** — it's
 - The **terminal** (xterm.js) with full TUI support — attaching mid-`vim` or mid-agent-session replays the current screen (plus up to 2,000 lines of recent scrollback) straight from the terminal grid, so you never land on a blank page.
 - The **agent sidebar** — your folders and their browseable file trees (tap to expand/collapse), the live **Changes (N)** list of what the agent touched (with a toggle button), and a **tap-to-view file reader**: tap any file to read its contents full-screen (text files, capped at 512 KB; viewing only — editing stays on the desktop).
 - **Terminal tabs and preset buttons** — switch folders and shells, open or close terminals, and launch `claude`/`codex`/`gemini` with one tap.
+- **Attach a file to the agent** — drag a screenshot onto the page (or tap **📎** on a phone to pick from the photo library, camera or Files; pasting an image works too). The browser has no access to a real path — and is usually on another machine anyway — so the file is copied to the host and *its* path is typed into the terminal, shell-quoted, exactly like a desktop drag-and-drop. Uploads land in `~/Library/Application Support/tigridenr/uploads/`, outside your project folders, so they never show up in the file tree or the Changes panel. 25 MB per file.
 - A **phone-friendly layout** — drawer sidebar, soft-keyboard button, a ⟳ resync button, and font auto-fit to the host's grid width.
 
 <img src="assets/mobile.png" alt="TigridenR on an iPhone: the agent sidebar button, session name, font size controls and keyboard button along the top, Claude Code running in the terminal, and the terminal tab plus claude/codex/gemini preset buttons along the bottom" width="300" align="right">
@@ -241,7 +242,7 @@ enabled = false
 port = 8620
 ```
 
-Runtime state (restored folders, split position) lives next to it in `state.toml`; shadow snapshots live in `snapshots/`. CLI: `tigridenr [--headless] [--port N] [--no-remote] [FOLDER...]` (see `--help`). Note: toggling remote access from the app re-writes `config.toml`, so hand-added comments are lost.
+Runtime state (restored folders, split position) lives next to it in `state.toml`; shadow snapshots live in `snapshots/`, and files attached from the web in `uploads/`. CLI: `tigridenr [--headless] [--port N] [--no-remote] [FOLDER...]` (see `--help`). Note: toggling remote access from the app re-writes `config.toml`, so hand-added comments are lost.
 
 ## Architecture
 

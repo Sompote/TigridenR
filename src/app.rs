@@ -1739,7 +1739,7 @@ impl App {
     // ----- file drop -----
 
     /// Quotes a path for the shell unless it is entirely safe characters.
-    fn shell_escape(text: &str) -> String {
+    pub(crate) fn shell_escape(text: &str) -> String {
         let safe = |c: char| c.is_ascii_alphanumeric() || "_-./~+=:@%,".contains(c);
         if !text.is_empty() && text.chars().all(safe) {
             text.to_string()

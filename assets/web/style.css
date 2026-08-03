@@ -117,6 +117,25 @@ body { font: var(--font); color: var(--text); -webkit-text-size-adjust: 100%; }
 }
 #overlay.hidden { display: none; }
 
+/* ---- drop zone ---- */
+#dropzone {
+  position: absolute;
+  inset: 8px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: var(--accent);
+  font-weight: 600;
+  pointer-events: none;
+}
+#dropzone.hidden { display: none; }
+
 /* ---- file viewer ---- */
 #file-view {
   position: absolute;

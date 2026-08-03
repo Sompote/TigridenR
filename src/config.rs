@@ -166,6 +166,13 @@ fn copy_dir_recursive(from: &std::path::Path, to: &std::path::Path) -> std::io::
     Ok(())
 }
 
+/// Where files dropped onto the web terminal are stored. Kept out of the
+/// project folders so uploads never show up in the file tree or the Changes
+/// panel.
+pub fn uploads_dir() -> Option<PathBuf> {
+    config_dir().map(|d| d.join("uploads"))
+}
+
 pub fn config_path() -> Option<PathBuf> {
     config_dir().map(|d| d.join("config.toml"))
 }

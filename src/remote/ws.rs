@@ -62,6 +62,11 @@ pub fn handle(
                     return;
                 }
             }
+            Ok(Message::Binary(data)) => {
+                if !handle_upload(&mut ws, &data, &hub) {
+                    return;
+                }
+            }
             Ok(Message::Close(_)) => return,
             Ok(_) => {}
             Err(WsError::Io(err))
@@ -164,6 +169,101 @@ fn read_file_reply(path: &str, hub: &Arc<StateHub>) -> serde_json::Value {
         "content": text,
         "truncated": truncated,
     })
+}
+
+/// Largest file a browser may drop onto the terminal.
+const UPLOAD_CAP: usize = 25 * 1024 * 1024;
+
+/// A dropped/attached file, sent as one binary frame:
+/// `[u64 LE term id][u32 LE name length][name UTF-8][file bytes]`.
+///
+/// The browser is usually on a different machine, so a client-side path would
+/// mean nothing to the agent — the bytes are written into the host's uploads
+/// directory and *that* path is typed into the terminal, matching what a
+/// desktop drag-and-drop does.
+fn handle_upload(ws: &mut WebSocket<TcpStream>, data: &[u8], hub: &Arc<StateHub>) -> bool {
+    let fail = |ws: &mut WebSocket<TcpStream>, msg: &str| {
+        let json = serde_json::json!({ "t": "upload_error", "msg": msg });
+        ws.send(Message::Text(json.to_string().into())).is_ok()
+    };
+    if data.len() < 12 {
+        return true; // not an upload frame; ignore
+    }
+    let term = u64::from_le_bytes(data[0..8].try_into().unwrap());
+    let name_len = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
+    if data.len() < 12 + name_len {
+        return fail(ws, "malformed upload");
+    }
+    if !hub.owns_term(term) {
+        return fail(ws, "unknown terminal");
+    }
+    let (name_bytes, body) = data[12..].split_at(name_len);
+    if body.len() > UPLOAD_CAP {
+        return fail(ws, "file too large (25 MB limit)");
+    }
+
+    let name = sanitize_filename(&String::from_utf8_lossy(name_bytes));
+    let Some(dir) = crate::config::uploads_dir() else {
+        return fail(ws, "no uploads directory");
+    };
+    if let Err(err) = std::fs::create_dir_all(&dir) {
+        return fail(ws, &format!("cannot create uploads dir: {err}"));
+    }
+    let path = unique_path(&dir, &name);
+    if let Err(err) = std::fs::write(&path, body) {
+        return fail(ws, &format!("cannot write file: {err}"));
+    }
+
+    // Type the path in like a desktop drop: shell-quoted, trailing space, and
+    // bracketed if the app asked for bracketed paste.
+    let text = format!("{} ", crate::app::App::shell_escape(&path.display().to_string()));
+    let bytes = super::registry::with_term_mode(term, |mode| {
+        crate::term::keys::encode_paste(&text, mode)
+    });
+    if let Some(bytes) = bytes {
+        super::registry::write(term, bytes);
+    }
+
+    let json = serde_json::json!({
+        "t": "uploaded",
+        "name": name,
+        "path": path.display().to_string(),
+    });
+    ws.send(Message::Text(json.to_string().into())).is_ok()
+}
+
+/// Keeps a client-supplied name to a single harmless path component.
+fn sanitize_filename(raw: &str) -> String {
+    let base = raw.rsplit(['/', '\\']).next().unwrap_or("");
+    let cleaned: String = base
+        .chars()
+        .map(|c| if c.is_control() || c == '\0' { '_' } else { c })
+        .collect();
+    let cleaned = cleaned.trim().trim_start_matches('.').to_string();
+    if cleaned.is_empty() {
+        "upload".into()
+    } else {
+        cleaned.chars().take(120).collect()
+    }
+}
+
+/// Never overwrite an earlier upload of the same name.
+fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let candidate = dir.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+        _ => (name.to_string(), String::new()),
+    };
+    for n in 2..10_000 {
+        let candidate = dir.join(format!("{stem}-{n}{ext}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(name)
 }
 
 /// Output frame: 8-byte little-endian term id, then raw PTY bytes.

@@ -1,0 +1,143 @@
+name: Release
+
+# Builds every platform on its own runner and attaches the archives to the
+# release for the pushed tag. Cross-compiling a Slint/winit app from one OS to
+# another needs each platform's system libraries, so native runners are used
+# rather than cross toolchains.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and attach artifacts to"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            os: macos-14
+            target: aarch64-apple-darwin
+            archive: tigridenr-macos-arm64.tar.gz
+          - name: macOS (Intel)
+            os: macos-13
+            target: x86_64-apple-darwin
+            archive: tigridenr-macos-x86_64.tar.gz
+          - name: Linux (x86_64)
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            archive: tigridenr-linux-x86_64.tar.gz
+          - name: Windows (x86_64)
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            archive: tigridenr-windows-x86_64.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Slint's winit/femtovg backend needs X11/Wayland and font headers.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxkbcommon-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libx11-dev libwayland-dev libfontconfig1-dev \
+            libfreetype6-dev pkg-config
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Test
+        run: cargo test --release --locked --target ${{ matrix.target }}
+
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p out
+          cp target/${{ matrix.target }}/release/tigridenr out/
+          cp README.md LICENSE out/
+          tar -czf ${{ matrix.archive }} -C out .
+
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir out
+          copy target\${{ matrix.target }}\release\tigridenr.exe out\
+          copy README.md out\
+          copy LICENSE out\
+          Compress-Archive -Path out\* -DestinationPath ${{ matrix.archive }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+  # A single .app that runs on both Mac architectures.
+  macos-universal:
+    name: macOS universal .app
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: universal
+
+      - name: Build both architectures
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+
+      - name: Assemble universal .app
+        run: |
+          APP=dist/TigridenR.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp bundle/Info.plist "$APP/Contents/"
+          cp assets/icon.icns "$APP/Contents/Resources/"
+          lipo -create -output "$APP/Contents/MacOS/tigridenr" \
+            target/aarch64-apple-darwin/release/tigridenr \
+            target/x86_64-apple-darwin/release/tigridenr
+          lipo -info "$APP/Contents/MacOS/tigridenr"
+          ditto -c -k --keepParent "$APP" TigridenR-macos-universal.app.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TigridenR-macos-universal.app.zip
+          path: TigridenR-macos-universal.app.zip
+
+  publish:
+    needs: [build, macos-universal]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Attach archives to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          ls -la artifacts
+          gh release upload "$TAG" artifacts/* --clobber \
+            --repo "${{ github.repository }}"

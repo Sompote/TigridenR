@@ -157,6 +157,8 @@ No Rust needed — grab the prebuilt app from the [latest release](https://githu
 
 Prefer a bare binary? The release also ships `tigridenr-0.1.0-macos-arm64.tar.gz` (Apple Silicon) and `tigridenr-0.1.0-macos-x86_64.tar.gz` (Intel) — untar and run `./tigridenr`.
 
+**Linux and Windows** builds (`tigridenr-0.1.0-linux-x86_64.tar.gz`, `tigridenr-0.1.0-windows-x86_64.zip`) are published too, but are **untested** — macOS is the developed-against platform. On Linux you need the usual GUI libraries (`libxkbcommon`, `libxcb`, `libfontconfig`, `libfreetype`); on Windows the binary is a console app, so a terminal window opens alongside it and `--headless` output stays visible.
+
 <details>
 <summary><b>Build from source</b> (stable Rust required)</summary>
 

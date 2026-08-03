@@ -21,6 +21,14 @@ enum Block {
     Text { buffer: Buffer, indent: f32, bg: Option<[u8; 3]>, height: f32 },
     Picture { scaled: RgbaImage, height: f32 },
     Rule,
+    Table {
+        /// rows -> cells; the first row is the header.
+        rows: Vec<Vec<Buffer>>,
+        font_px: f32,
+        col_widths: Vec<f32>,
+        row_heights: Vec<f32>,
+        height: f32,
+    },
 }
 
 /// A read-only rendered view of a file (image / markdown / table / pdf text),
@@ -131,6 +139,43 @@ impl ViewerState {
         buffer.set_wrap(wrap);
         buffer.set_text(text, &attrs, Shaping::Advanced, None);
         self.blocks.push(Block::Text { buffer, indent: 0.0, bg: None, height: 0.0 });
+        self.sources.push(None);
+    }
+
+    fn push_table(
+        &mut self,
+        font_system: &mut FontSystem,
+        rows: Vec<Vec<Vec<(String, Attrs<'static>)>>>,
+    ) {
+        if rows.iter().all(|row| row.iter().all(|cell| cell.iter().all(|(t, _)| t.trim().is_empty()))) {
+            return;
+        }
+        // Slightly smaller than body text so wide tables fit more per column.
+        let px = (self.font_px * 0.9).round().max(8.0);
+        let default = ui_attrs().color(self.text_color());
+        let mut buffers: Vec<Vec<Buffer>> = Vec::with_capacity(rows.len());
+        for cells in rows {
+            let mut row = Vec::with_capacity(cells.len());
+            for cell in cells {
+                let mut buffer = Buffer::new(font_system, Metrics::new(px, (px * 1.35).round()));
+                buffer.set_wrap(Wrap::WordOrGlyph);
+                buffer.set_rich_text(
+                    cell.iter().map(|(t, a)| (t.as_str(), a.clone())),
+                    &default,
+                    Shaping::Advanced,
+                    None,
+                );
+                row.push(buffer);
+            }
+            buffers.push(row);
+        }
+        self.blocks.push(Block::Table {
+            rows: buffers,
+            font_px: px,
+            col_widths: Vec::new(),
+            row_heights: Vec::new(),
+            height: 0.0,
+        });
         self.sources.push(None);
     }
 
@@ -248,6 +293,9 @@ impl ViewerState {
         let mut code_text = String::new();
         let mut list_stack: Vec<Option<u64>> = Vec::new();
         let mut quote_depth = 0usize;
+        // rows -> cells -> styled spans; Some while inside a table.
+        let mut table: Option<Vec<Vec<Vec<(String, Attrs<'static>)>>>> = None;
+        let mut table_row: Vec<Vec<(String, Attrs<'static>)>> = Vec::new();
 
         macro_rules! flush {
             ($self:ident, $spans:ident, $heading:ident, $list_stack:ident, $quote_depth:ident) => {{
@@ -330,6 +378,38 @@ impl ViewerState {
                     spans.push((marker, attrs_for(1, 0, 0, false, self.font_family)));
                 }
                 Event::End(TagEnd::Item) => flush!(self, spans, heading, list_stack, quote_depth),
+                Event::Start(Tag::Table(_)) => {
+                    flush!(self, spans, heading, list_stack, quote_depth);
+                    table = Some(Vec::new());
+                }
+                Event::End(TagEnd::Table) => {
+                    if let Some(rows) = table.take() {
+                        self.push_table(font_system, rows);
+                    }
+                    spans.clear();
+                }
+                Event::Start(Tag::TableHead) => {
+                    bold += 1;
+                    table_row.clear();
+                    spans.clear();
+                }
+                Event::End(TagEnd::TableHead) => {
+                    bold = bold.saturating_sub(1);
+                    if let Some(rows) = table.as_mut() {
+                        rows.push(std::mem::take(&mut table_row));
+                    }
+                }
+                Event::Start(Tag::TableRow) => {
+                    table_row.clear();
+                    spans.clear();
+                }
+                Event::End(TagEnd::TableRow) => {
+                    if let Some(rows) = table.as_mut() {
+                        rows.push(std::mem::take(&mut table_row));
+                    }
+                }
+                Event::Start(Tag::TableCell) => spans.clear(),
+                Event::End(TagEnd::TableCell) => table_row.push(std::mem::take(&mut spans)),
                 Event::Start(Tag::CodeBlock(_)) => {
                     flush!(self, spans, heading, list_stack, quote_depth);
                     in_code_block = true;
@@ -439,6 +519,75 @@ impl ViewerState {
                     }
                 }
                 Block::Rule => total += self.font_px + self.spacing,
+                Block::Table { rows, font_px, col_widths, row_heights, height } => {
+                    let ncols = rows.iter().map(Vec::len).max().unwrap_or(0);
+                    if ncols == 0 {
+                        continue;
+                    }
+                    let pad_h = (*font_px * 0.5).round();
+                    let pad_v = (*font_px * 0.3).round();
+                    // Natural (unwrapped) width of each column's widest cell.
+                    let mut natural = vec![1.0f32; ncols];
+                    for row in rows.iter_mut() {
+                        for (i, buffer) in row.iter_mut().enumerate() {
+                            buffer.set_size(None, None);
+                            buffer.shape_until_scroll(font_system, false);
+                            let w = buffer.layout_runs().map(|r| r.line_w).fold(0.0f32, f32::max);
+                            natural[i] = natural[i].max(w + 2.0);
+                        }
+                    }
+                    // Width left for cell content after padding and 1px grid lines.
+                    let avail =
+                        (text_w - ncols as f32 * 2.0 * pad_h - (ncols + 1) as f32).max(ncols as f32 * 16.0);
+                    let sum: f32 = natural.iter().sum();
+                    let mut cols: Vec<f32> = if sum <= avail {
+                        natural
+                    } else {
+                        // Distribute proportionally, but keep narrow columns readable
+                        // by taking the shortfall out of the widest ones.
+                        let min_w = (*font_px * 4.0).min(avail / ncols as f32);
+                        let mut widths: Vec<f32> = natural.iter().map(|n| avail * n / sum).collect();
+                        let mut deficit = 0.0f32;
+                        for w in widths.iter_mut() {
+                            if *w < min_w {
+                                deficit += min_w - *w;
+                                *w = min_w;
+                            }
+                        }
+                        if deficit > 0.0 {
+                            let flexible: f32 =
+                                widths.iter().filter(|w| **w > min_w).map(|w| *w - min_w).sum();
+                            if flexible > 0.0 {
+                                let k = (deficit / flexible).min(1.0);
+                                for w in widths.iter_mut() {
+                                    if *w > min_w {
+                                        *w -= (*w - min_w) * k;
+                                    }
+                                }
+                            }
+                        }
+                        widths
+                    };
+                    for w in cols.iter_mut() {
+                        *w = w.max(8.0).round();
+                    }
+                    let mut heights = Vec::with_capacity(rows.len());
+                    for row in rows.iter_mut() {
+                        let mut row_h = *font_px * 1.35;
+                        for (i, buffer) in row.iter_mut().enumerate() {
+                            buffer.set_size(Some(cols[i]), None);
+                            buffer.shape_until_scroll(font_system, false);
+                            for run in buffer.layout_runs() {
+                                row_h = row_h.max(run.line_top + run.line_height);
+                            }
+                        }
+                        heights.push((row_h + 2.0 * pad_v).round());
+                    }
+                    *height = heights.iter().sum::<f32>() + (rows.len() + 1) as f32;
+                    *col_widths = cols;
+                    *row_heights = heights;
+                    total += *height + self.spacing;
+                }
             }
         }
         self.content_h = total + self.margin;
@@ -512,6 +661,54 @@ impl ViewerState {
                     let dim = colors::base_palette(self.theme)[8];
                     canvas.fill_rect(margin as i32, ry, text_w as i32, 1, dim);
                     y += self.font_px + self.spacing;
+                }
+                Block::Table { rows, font_px, col_widths, row_heights, height } => {
+                    if y + *height >= 0.0 && y <= h as f32 && !col_widths.is_empty() {
+                        let dim = colors::base_palette(self.theme)[8];
+                        let head_bg = self.theme.ui.panel_hover;
+                        let pad_h = (*font_px * 0.5).round();
+                        let pad_v = (*font_px * 0.3).round();
+                        let table_w = (col_widths.iter().map(|w| w + 2.0 * pad_h).sum::<f32>()
+                            + (col_widths.len() + 1) as f32) as i32;
+                        canvas.fill_rect(margin as i32, y as i32, table_w, 1, dim);
+                        let mut row_y = y + 1.0;
+                        for (ri, row) in rows.iter_mut().enumerate() {
+                            let row_h = row_heights[ri];
+                            if ri == 0 {
+                                canvas.fill_rect(
+                                    margin as i32 + 1,
+                                    row_y as i32,
+                                    table_w - 2,
+                                    row_h as i32,
+                                    head_bg,
+                                );
+                            }
+                            let mut cell_x = margin + 1.0;
+                            for (ci, buffer) in row.iter_mut().enumerate() {
+                                let ox = (cell_x + pad_h) as i32;
+                                let oy = (row_y + pad_v) as i32;
+                                buffer.draw(
+                                    font_system,
+                                    swash_cache,
+                                    default_color,
+                                    |px, py, pw, ph, color| {
+                                        canvas.blend_rect(ox + px, oy + py, pw as i32, ph as i32, color);
+                                    },
+                                );
+                                cell_x += col_widths[ci] + 2.0 * pad_h + 1.0;
+                            }
+                            row_y += row_h;
+                            canvas.fill_rect(margin as i32, row_y as i32, table_w, 1, dim);
+                            row_y += 1.0;
+                        }
+                        let mut line_x = margin;
+                        canvas.fill_rect(line_x as i32, y as i32, 1, *height as i32, dim);
+                        for w in col_widths.iter() {
+                            line_x += w + 2.0 * pad_h + 1.0;
+                            canvas.fill_rect(line_x as i32, y as i32, 1, *height as i32, dim);
+                        }
+                    }
+                    y += *height + self.spacing;
                 }
             }
         }

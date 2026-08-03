@@ -63,10 +63,12 @@
       term.options.fontFamily = '"' + t.font_family +
         '", Menlo, Consolas, ui-monospace, monospace';
     }
-    // The host's size is the default; a manual choice still wins.
+    // The host's size seeds auto-fit (a manual choice still wins), then the
+    // fit re-runs so a theme change doesn't undo the window fitting.
     if (!manualFont && t.font_size) {
       term.options.fontSize = t.font_size;
-      showFontSize();
+      if (currentTerm && !resizable) fitFont(term.cols, term.rows);
+      else showFontSize();
     }
   }
 
@@ -121,7 +123,7 @@
           term.reset();
           term.resize(msg.cols, msg.rows);
           hideOverlay();
-          if (resizable) fitResize(); else fitFont(msg.cols);
+          if (resizable) fitResize(); else fitFont(msg.cols, msg.rows);
         }
         else if (msg.t === 'exited') {
           if (msg.term === currentTerm) showOverlay('shell exited');
@@ -176,14 +178,21 @@
   // scrolling sideways.
   var MIN_FIT = 11, MIN_FONT = 8, MAX_FONT = 32;
 
-  function fitFont(cols) {
+  // Scales the font so the host's grid fills the window. Both axes matter:
+  // sizing on width alone would overflow a short window vertically, so the
+  // smaller of the two fits wins and the whole grid stays visible.
+  function fitFont(cols, rows) {
     if (manualFont) { term.options.fontSize = manualFont; return; }
     var wrap = $('term-wrap');
-    var avail = wrap.clientWidth - 10;
-    if (avail <= 0 || !cols) return;
+    var availW = wrap.clientWidth - 12;
+    var availH = wrap.clientHeight - 6;
+    if (availW <= 0 || !cols) return;
     var cell = cellSize();
-    var ideal = Math.floor(term.options.fontSize * avail / (cols * cell.w));
-    term.options.fontSize = Math.max(MIN_FIT, Math.min(18, ideal));
+    var size = term.options.fontSize;
+    var byWidth = size * availW / (cols * cell.w);
+    var byHeight = rows && cell.h ? size * availH / (rows * cell.h) : byWidth;
+    var ideal = Math.floor(Math.min(byWidth, byHeight));
+    term.options.fontSize = Math.max(MIN_FIT, Math.min(MAX_FONT, ideal));
     showFontSize();
   }
 
@@ -196,6 +205,9 @@
     var el = $('font-size');
     el.textContent = Math.round(term.options.fontSize);
     el.className = manualFont ? '' : 'auto';
+    el.title = manualFont
+      ? 'Fixed size — tap to auto-fit the window'
+      : 'Auto-fitting the window — A− / A+ to fix a size';
   }
 
   function nudgeFont(delta) {
@@ -210,7 +222,7 @@
   function autoFont() {
     manualFont = 0;
     localStorage.removeItem(FONT_KEY);
-    if (currentTerm) { if (resizable) fitResize(); else fitFont(term.cols); }
+    if (currentTerm) { if (resizable) fitResize(); else fitFont(term.cols, term.rows); }
     showFontSize();
   }
 
@@ -248,7 +260,7 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
       if (!currentTerm) return;
-      if (resizable) fitResize(); else fitFont(term.cols);
+      if (resizable) fitResize(); else fitFont(term.cols, term.rows);
     }, 120);
   }
   window.addEventListener('resize', onViewportChange);

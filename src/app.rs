@@ -1397,6 +1397,9 @@ impl App {
     }
 
     pub fn editor_key(&mut self, text: &str, mods: Mods) -> bool {
+        if self.viewer_zoom_key(text, &mods) {
+            return true;
+        }
         let Some(session) = self.sessions.get_mut(self.active) else { return false };
         let Some(editor) = session.editor.as_mut() else { return false };
         match editor.handle_key(&mut self.font_system, &mut self.clipboard, text, &mods) {
@@ -1413,6 +1416,50 @@ impl App {
         }
     }
 
+    /// Cmd+= / Cmd+- / Cmd+0 zoom the viewer (images and PDF pages).
+    fn viewer_zoom_key(&mut self, text: &str, mods: &Mods) -> bool {
+        if !mods.meta || mods.ctrl || mods.alt {
+            return false;
+        }
+        let Some(session) = self.sessions.get_mut(self.active) else { return false };
+        let Some(viewer_state) = session.viewer.as_mut() else { return false };
+        let handled = match text.chars().next() {
+            Some('=') | Some('+') => {
+                viewer_state.zoom_by(&mut self.font_system, 1.25);
+                true
+            }
+            Some('-') => {
+                viewer_state.zoom_by(&mut self.font_system, 0.8);
+                true
+            }
+            Some('0') => {
+                viewer_state.zoom_reset(&mut self.font_system);
+                true
+            }
+            _ => false,
+        };
+        if handled {
+            self.render_editor();
+        }
+        handled
+    }
+
+    /// Header magnifier buttons: same steps as Cmd+= / Cmd+-.
+    pub fn viewer_zoom_in(&mut self) {
+        self.viewer_zoom_step(1.25);
+    }
+
+    pub fn viewer_zoom_out(&mut self) {
+        self.viewer_zoom_step(0.8);
+    }
+
+    fn viewer_zoom_step(&mut self, factor: f32) {
+        let Some(session) = self.sessions.get_mut(self.active) else { return };
+        let Some(viewer_state) = session.viewer.as_mut() else { return };
+        viewer_state.zoom_by(&mut self.font_system, factor);
+        self.render_editor();
+    }
+
     pub fn editor_mouse(&mut self, kind: i32, x: f32, y: f32) {
         let scale = self.scale();
         let Some(session) = self.sessions.get_mut(self.active) else { return };
@@ -1423,16 +1470,23 @@ impl App {
         }
     }
 
-    pub fn editor_wheel(&mut self, delta: f32) {
+    /// `zoom` is set while Ctrl/Cmd is held: the wheel then zooms the viewer
+    /// (images and PDF pages) instead of scrolling it.
+    pub fn editor_wheel(&mut self, delta_x: f32, delta_y: f32, zoom: bool) {
         let scale = self.scale();
         let Some(session) = self.sessions.get_mut(self.active) else { return };
         if let Some(viewer_state) = session.viewer.as_mut() {
-            viewer_state.scroll_by(delta * scale);
+            if zoom {
+                let factor = (1.0 + delta_y * 0.002 * scale).clamp(0.5, 2.0);
+                viewer_state.zoom_by(&mut self.font_system, factor);
+            } else {
+                viewer_state.scroll_by(delta_x * scale, delta_y * scale);
+            }
             self.render_editor();
             return;
         }
         let Some(editor) = session.editor.as_mut() else { return };
-        editor.scroll(&mut self.font_system, delta * scale);
+        editor.scroll(&mut self.font_system, delta_y * scale);
         self.render_editor();
     }
 
@@ -2230,6 +2284,9 @@ impl App {
         ui.set_has_session(!self.sessions.is_empty());
         match self.sessions.get(self.active) {
             Some(session) => {
+                ui.set_viewer_zoomable(
+                    session.viewer.as_ref().is_some_and(|v| v.zoomable()),
+                );
                 match (&session.viewer, &session.editor) {
                     (Some(viewer_state), _) => {
                         ui.set_editor_title(SharedString::from(
@@ -2238,7 +2295,7 @@ impl App {
                         ui.set_editor_dirty(false);
                         ui.set_editor_view_toggle(SharedString::from(match viewer_state.kind {
                             viewer::ViewKind::Markdown | viewer::ViewKind::Csv => "Source",
-                            viewer::ViewKind::Image | viewer::ViewKind::PdfText => "",
+                            viewer::ViewKind::Image | viewer::ViewKind::Pdf => "",
                         }));
                     }
                     (None, Some(editor)) if editor.read_only => {
@@ -2280,6 +2337,7 @@ impl App {
                 ui.set_active_term(session.active_term as i32);
             }
             None => {
+                ui.set_viewer_zoomable(false);
                 ui.set_editor_title(SharedString::default());
                 ui.set_editor_dirty(false);
                 ui.set_term_overlay(SharedString::default());

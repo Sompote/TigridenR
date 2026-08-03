@@ -1,6 +1,6 @@
 # TigridenR — the tiny agentic workbench you can run from anywhere
 
-![Version](https://img.shields.io/badge/version-0.1.0-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
+![Version](https://img.shields.io/badge/version-0.1.0-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 
 **A tiny workbench for supervising AI coding agents — on your desk, and in your pocket.**
 
@@ -8,7 +8,7 @@ Run `claude`, `codex`, `gemini` — any terminal agent — each in its own folde
 
 No run/debug tooling, no chat panel, no LSP. The agents do the heavy lifting; TigridenR gives you eyes and hands — local or remote.
 
-Written in pure Rust. **~13 MB binary, ~40 MB RAM.**
+Written in pure Rust. **13–18 MB binary, ~40 MB RAM** — no Electron, no webview, no bundled browser.
 
 ![TigridenR supervising an agent: the viewer shows a chart the agent produced while the agent CLI runs in one of three terminal tabs below](assets/screenshot.png)
 
@@ -143,21 +143,77 @@ Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.
 - **Settings dialog** (⌘,) — theme (Dark/Light × Classic/Minimal/Vivid), accent color, terminal/editor font and size, interface text size, scrollback, the Changes-panel default, and remote access (on/off + port). Appearance changes apply live to every open window and are saved to config.toml; the web client picks them up too.
 - **Per-folder sessions, recent folders, native menu bar, persistent layout** — and small on purpose: no webview, no Electron, no C regex libraries.
 
-## Quick install (macOS)
+## Install
 
-No Rust needed — grab the prebuilt app from the [latest release](https://github.com/Sompote/TigridenR/releases/latest):
+No Rust needed — prebuilt binaries for every platform are on the [latest release](https://github.com/Sompote/TigridenR/releases/latest).
 
-1. Download **`TigridenR-0.1.0-macos-universal.app.zip`** (one download for both Apple Silicon and Intel).
+| Download | For |
+|---|---|
+| `TigridenR-0.1.0-macos-universal.app.zip` | **macOS — start here.** One app for Apple Silicon *and* Intel |
+| `tigridenr-0.1.0-macos-arm64.tar.gz` | macOS bare binary, Apple Silicon |
+| `tigridenr-0.1.0-macos-x86_64.tar.gz` | macOS bare binary, Intel |
+| `tigridenr-0.1.0-linux-x86_64.tar.gz` | Linux x86_64 |
+| `tigridenr-0.1.0-windows-x86_64.zip` | Windows x86_64 |
+
+<details open>
+<summary><b>macOS</b></summary>
+
+1. Download **`TigridenR-0.1.0-macos-universal.app.zip`**.
 2. Unzip and drag **TigridenR.app** into **/Applications**.
-3. First launch only: the app isn't notarized, so **right-click → Open → Open**, or run:
+3. First launch only — the app isn't notarized, so **right-click ▸ Open ▸ Open**, or:
 
    ```sh
-   xattr -d com.apple.quarantine /Applications/TigridenR.app
+   xattr -dr com.apple.quarantine /Applications/TigridenR.app
    ```
 
-Prefer a bare binary? The release also ships `tigridenr-0.1.0-macos-arm64.tar.gz` (Apple Silicon) and `tigridenr-0.1.0-macos-x86_64.tar.gz` (Intel) — untar and run `./tigridenr`.
+Prefer a bare binary? Untar an arch-specific tarball and run `./tigridenr`.
+</details>
 
-**Linux and Windows** builds (`tigridenr-0.1.0-linux-x86_64.tar.gz`, `tigridenr-0.1.0-windows-x86_64.zip`) are published too, but are **untested** — macOS is the developed-against platform. On Linux you need the usual GUI libraries (`libxkbcommon`, `libxcb`, `libfontconfig`, `libfreetype`); on Windows the binary is a console app, so a terminal window opens alongside it and `--headless` output stays visible.
+<details>
+<summary><b>Linux</b></summary>
+
+```sh
+tar -xzf tigridenr-0.1.0-linux-x86_64.tar.gz
+./tigridenr ~/code/project
+```
+
+Install the GUI libraries it links against if they aren't already present:
+
+```sh
+# Debian / Ubuntu
+sudo apt install libxkbcommon0 libxcb1 libfontconfig1 libfreetype6
+
+# Fedora
+sudo dnf install libxkbcommon libxcb fontconfig freetype
+```
+
+File dialogs go through the XDG desktop portal, so no GTK runtime is needed. Headless mode needs none of these — a server with no desktop at all can run `./tigridenr --headless ~/code/project`.
+</details>
+
+<details>
+<summary><b>Windows</b></summary>
+
+Unzip and run `tigridenr.exe`. It's a console binary, so a terminal window opens alongside the app — that's deliberate, so `--headless` output stays visible.
+
+The shell is `%COMSPEC%` (`cmd.exe`); set `COMSPEC` to `powershell.exe` or a WSL launcher if you'd rather have those.
+</details>
+
+> **Platform status.** macOS is what TigridenR is developed and used on, and the only platform whose GUI has been exercised. The Linux build passes the full test suite on Linux; the Windows binary is cross-compiled and has not been run. Treat both as **untested** — bug reports welcome.
+
+Every download is self-contained: the web client (HTML/CSS/JS + xterm.js) is embedded in the binary, so there is nothing else to install and no CDN to reach.
+
+### First run
+
+```sh
+tigridenr                       # open the window, restore your last folders
+tigridenr ~/code/project        # …or open specific folders
+tigridenr --headless ~/code/x   # no window at all; serve it to a browser
+tigridenr --help                # every flag
+```
+
+1. **+ Add folder** (⌘O) and pick a project — a login shell opens there.
+2. Click **claude** / **codex** / **gemini** to launch an agent, or type any command.
+3. **⌘,** ▸ **Remote Access ▸ On** to get a URL you can open on your phone.
 
 <details>
 <summary><b>Build from source</b> (stable Rust required)</summary>
@@ -174,7 +230,7 @@ cp -R dist/TigridenR.app /Applications/   # …and install it
 
 Local-only build (remote access compiled out): `cargo build --release --no-default-features`.
 
-macOS is the primary target; Linux/Windows are untested but the stack is cross-platform.
+Cross-compiling to another OS needs that platform's system libraries, so releases are built on native runners by `.github/workflows/release.yml` — pushing a `v*` tag builds all four targets, runs their tests, and attaches the archives to the release.
 </details>
 
 ## Usage

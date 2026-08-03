@@ -1,6 +1,6 @@
 # TigridenR — the tiny agentic workbench you can run from anywhere
 
-![Version](https://img.shields.io/badge/version-0.1.0-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+![Version](https://img.shields.io/badge/version-0.1.1-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 
 **A tiny workbench for supervising AI coding agents — on your desk, and in your pocket.**
 
@@ -149,16 +149,16 @@ No Rust needed — prebuilt binaries for every platform are on the [latest relea
 
 | Download | For |
 |---|---|
-| `TigridenR-0.1.0-macos-universal.app.zip` | **macOS — start here.** One app for Apple Silicon *and* Intel |
-| `tigridenr-0.1.0-macos-arm64.tar.gz` | macOS bare binary, Apple Silicon |
-| `tigridenr-0.1.0-macos-x86_64.tar.gz` | macOS bare binary, Intel |
-| `tigridenr-0.1.0-linux-x86_64.tar.gz` | Linux x86_64 |
-| `tigridenr-0.1.0-windows-x86_64.zip` | Windows x86_64 |
+| `TigridenR-macos-universal.app.zip` | **macOS — start here.** One app for Apple Silicon *and* Intel |
+| `tigridenr-macos-arm64.tar.gz` | macOS bare binary, Apple Silicon |
+| `tigridenr-macos-x86_64.tar.gz` | macOS bare binary, Intel |
+| `tigridenr-linux-x86_64.tar.gz` | Linux x86_64 |
+| `tigridenr-windows-x86_64.zip` | Windows x86_64 |
 
 <details open>
 <summary><b>macOS</b></summary>
 
-1. Download **`TigridenR-0.1.0-macos-universal.app.zip`**.
+1. Download **`TigridenR-macos-universal.app.zip`**.
 2. Unzip and drag **TigridenR.app** into **/Applications**.
 3. First launch only — the app isn't notarized, so **right-click ▸ Open ▸ Open**, or:
 
@@ -173,7 +173,7 @@ Prefer a bare binary? Untar an arch-specific tarball and run `./tigridenr`.
 <summary><b>Linux</b></summary>
 
 ```sh
-tar -xzf tigridenr-0.1.0-linux-x86_64.tar.gz
+tar -xzf tigridenr-linux-x86_64.tar.gz
 ./tigridenr ~/code/project
 ```
 

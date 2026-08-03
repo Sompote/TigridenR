@@ -775,6 +775,13 @@ impl App {
                         }
                     }
                     eprintln!("TEST_SETTINGS applied: {:?}", config());
+                    #[cfg(feature = "remote")]
+                    eprintln!(
+                        "TEST_REMOTE enabled={} status={:?} url={:?}",
+                        ui.get_remote_enabled(),
+                        ui.get_remote_status().to_string(),
+                        ui.get_remote_url().to_string()
+                    );
                 });
             }
         }

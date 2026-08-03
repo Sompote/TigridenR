@@ -99,7 +99,8 @@ To get a real `https://` address, open [**admin console ▸ DNS**](https://login
 
 | Status line says | Fix |
 |---|---|
-| `Tailscale is not installed` | Install it; TigridenR looks on `$PATH` and in `/Applications/Tailscale.app`. |
+| `Tailscale is not installed` | Install it. TigridenR looks on `$PATH`, then `/usr/local/bin`, `/opt/homebrew/bin`, and the app bundle. |
+| `found Tailscale but its CLI would not answer` | The app bundle's binary needs a GUI session and won't answer when TigridenR is launched from Finder. Install the CLI: **Tailscale menu ▸ Install CLI**, or `brew install tailscale`. |
 | `Tailscale is not running — open the Tailscale app and log in` | Sign in, or the VPN toggle is off. |
 | `no tailnet DNS name (MagicDNS off?)` | Enable MagicDNS in [admin ▸ DNS](https://login.tailscale.com/admin/dns). |
 | Page won't load on the phone | Check the Tailscale toggle is on there and it's the same account. |

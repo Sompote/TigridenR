@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub enum TsStatus {
@@ -45,46 +46,83 @@ impl TsStatus {
     }
 }
 
-fn find_cli() -> Option<PathBuf> {
-    // PATH first, then the macOS app-bundle CLI (not linked into PATH by
-    // default when installed from the App Store).
-    let from_path = Command::new("tailscale").arg("--version").output();
-    if from_path.map(|o| o.status.success()).unwrap_or(false) {
-        return Some(PathBuf::from("tailscale"));
+/// Where a working `tailscale` CLI may live. PATH first (covers terminal
+/// launches and custom installs), then the usual absolute locations, and the
+/// app bundle last — see `status_json` for why that one is a poor first
+/// choice.
+const CLI_CANDIDATES: [&str; 4] = [
+    "tailscale",
+    "/usr/local/bin/tailscale",
+    "/opt/homebrew/bin/tailscale",
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+];
+
+/// The candidate that last answered successfully, so `serve` and `serve off`
+/// reuse it instead of probing again.
+static WORKING_CLI: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Runs `status --json` on each candidate and returns the first whose output
+/// actually parses.
+///
+/// Exit status is not a usable test here: launched from Finder (no GUI
+/// session environment), the app-bundle binary prints "The Tailscale GUI
+/// failed to start…" to *stdout* and still exits 0. Requiring parseable JSON
+/// is what separates a working CLI from that one.
+fn status_json() -> Result<(PathBuf, serde_json::Value), TsStatus> {
+    let mut ran_something = false;
+    for candidate in CLI_CANDIDATES {
+        let Ok(output) =
+            Command::new(candidate).args(["status", "--json"]).stdin(Stdio::null()).output()
+        else {
+            continue; // not installed at this path
+        };
+        ran_something = true;
+        let text = String::from_utf8_lossy(&output.stdout);
+        // Tolerate any chatter printed before the JSON body.
+        let Some(start) = text.find('{') else { continue };
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text[start..]) {
+            let path = PathBuf::from(candidate);
+            *WORKING_CLI.lock().unwrap() = Some(path.clone());
+            return Ok((path, json));
+        }
     }
-    let bundled = PathBuf::from("/Applications/Tailscale.app/Contents/MacOS/Tailscale");
-    if bundled.is_file() {
-        return Some(bundled);
+    Err(if ran_something {
+        TsStatus::Error(
+            "found Tailscale but its CLI would not answer — install the CLI \
+             (Tailscale ▸ Install CLI, or `brew install tailscale`)"
+                .into(),
+        )
+    } else {
+        TsStatus::NotInstalled
+    })
+}
+
+/// The CLI to run for non-status commands; falls back to probing.
+fn cli() -> Option<PathBuf> {
+    if let Some(path) = WORKING_CLI.lock().unwrap().clone() {
+        return Some(path);
     }
-    None
+    status_json().ok().map(|(path, _)| path)
 }
 
 /// The machine's tailnet DNS name plus whether the tailnet has HTTPS
 /// certificates enabled (`CertDomains` non-empty).
-fn tailnet_info(cli: &PathBuf) -> Result<(String, bool), TsStatus> {
-    let output = Command::new(cli)
-        .args(["status", "--json"])
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| TsStatus::Error(e.to_string()))?;
-    if !output.status.success() {
-        return Err(TsStatus::NotRunning);
-    }
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| TsStatus::Error(format!("status parse: {e}")))?;
+fn tailnet_info() -> Result<(PathBuf, String, bool), TsStatus> {
+    let (cli, json) = status_json()?;
     if json["BackendState"].as_str() != Some("Running") {
         return Err(TsStatus::NotRunning);
     }
     let https = json["CertDomains"].as_array().is_some_and(|d| !d.is_empty());
     match json["Self"]["DNSName"].as_str() {
-        Some(name) if !name.is_empty() => Ok((name.trim_end_matches('.').to_string(), https)),
+        Some(name) if !name.is_empty() => {
+            Ok((cli, name.trim_end_matches('.').to_string(), https))
+        }
         _ => Err(TsStatus::Error("no tailnet DNS name (MagicDNS off?)".into())),
     }
 }
 
 pub fn enable(port: u16) -> TsStatus {
-    let Some(cli) = find_cli() else { return TsStatus::NotInstalled };
-    let (name, https) = match tailnet_info(&cli) {
+    let (cli, name, https) = match tailnet_info() {
         Ok(info) => info,
         Err(status) => return status,
     };
@@ -120,7 +158,7 @@ pub fn enable(port: u16) -> TsStatus {
 
 pub fn disable() {
     SERVING.store(false, Ordering::Release);
-    let Some(cli) = find_cli() else { return };
+    let Some(cli) = cli() else { return };
     // Tear down whichever listener was set up.
     for flag in ["--https=443", "--http=80"] {
         let _ = Command::new(&cli)

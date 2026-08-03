@@ -311,6 +311,33 @@ mod tests {
         assert_eq!(source.grid().cursor.point, replayed.grid().cursor.point);
     }
 
+    /// The scroll keys must move the viewport into history and come back,
+    /// which is what App::term_scroll_key drives.
+    #[test]
+    fn scrollback_can_be_paged() {
+        use alacritty_terminal::grid::Scroll;
+
+        let mut term = new_term(40, 10);
+        for i in 0..40 {
+            feed(&mut term, format!("line {i}\r\n").as_bytes());
+        }
+        assert_eq!(term.grid().display_offset(), 0, "starts at the live edge");
+
+        term.scroll_display(Scroll::PageUp);
+        let after_page = term.grid().display_offset();
+        assert!(after_page > 0, "PageUp must move into scrollback");
+
+        term.scroll_display(Scroll::Top);
+        let top = term.grid().display_offset();
+        assert!(top >= after_page, "Top must reach at least as far as one page");
+
+        term.scroll_display(Scroll::PageDown);
+        assert!(term.grid().display_offset() < top, "PageDown must come back down");
+
+        term.scroll_display(Scroll::Bottom);
+        assert_eq!(term.grid().display_offset(), 0, "Bottom returns to the live edge");
+    }
+
     #[test]
     fn scrollback_replay() {
         let mut source = new_term(40, 10);

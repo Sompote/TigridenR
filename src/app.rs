@@ -7,7 +7,7 @@ use std::sync::{Arc, OnceLock};
 use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::index::{Column, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::term::viewport_to_point;
+use alacritty_terminal::term::{viewport_to_point, TermMode};
 use cosmic_text::{FontSystem, SwashCache, SyntaxSystem};
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 
@@ -695,6 +695,49 @@ impl App {
                     slint::Timer::single_shot(std::time::Duration::from_millis(4000), move || {
                         with_app_id(app_id, |app| report(app, "after-write"));
                     });
+                });
+            }
+            // Fills the terminal with output, then drives the scrollback keys
+            // through the real term-key callback and reports the viewport
+            // offset after each one.
+            if std::env::var("TIGRIDENR_TEST_SCROLL").is_ok() {
+                let app_id = self.id;
+                slint::Timer::single_shot(std::time::Duration::from_millis(1500), move || {
+                    with_app_id(app_id, |app| {
+                        if let Some(handle) = app.sessions.first().and_then(|s| s.terms.first()) {
+                            handle.term.write(b"seq 1 200\r".to_vec());
+                        }
+                    });
+                });
+                slint::Timer::single_shot(std::time::Duration::from_millis(4000), move || {
+                    let ui = WINDOWS.with(|slot| {
+                        slot.borrow().iter().find(|e| e.id == app_id).map(|e| e._ui.clone_strong())
+                    });
+                    let Some(ui) = ui else { return };
+                    let offset = |label: &str| {
+                        with_app_id(app_id, |app| {
+                            let off = app
+                                .sessions
+                                .first()
+                                .and_then(|s| s.terms.first())
+                                .map(|h| h.term.term.lock().grid().display_offset())
+                                .unwrap_or(0);
+                            eprintln!("SCROLL {label}: display_offset={off}");
+                        });
+                    };
+                    offset("start");
+                    // shift = true is the 5th argument.
+                    ui.invoke_term_key(keys::K_PAGE_UP.to_string().into(), false, false, false, true);
+                    offset("shift+pageup");
+                    ui.invoke_term_key(keys::K_HOME.to_string().into(), false, false, false, true);
+                    offset("shift+home");
+                    ui.invoke_term_key(keys::K_PAGE_DOWN.to_string().into(), false, false, false, true);
+                    offset("shift+pagedown");
+                    ui.invoke_term_key(keys::K_END.to_string().into(), false, false, false, true);
+                    offset("shift+end");
+                    // Unshifted PageUp must reach the shell, not scroll.
+                    ui.invoke_term_key(keys::K_PAGE_UP.to_string().into(), false, false, false, false);
+                    offset("plain-pageup");
                 });
             }
             // Comma-separated "key=value" settings edits, applied like clicks
@@ -1444,6 +1487,9 @@ impl App {
         if mods.meta {
             return self.term_shortcut(text);
         }
+        if self.term_scroll_key(text, &mods) {
+            return true;
+        }
         let Some(handle) = self.sessions.get_mut(self.active).and_then(Session::active_term_mut)
         else {
             return false;
@@ -1542,6 +1588,43 @@ impl App {
             }
         }
         self.render_term();
+    }
+
+    /// Scrollback navigation, following the usual terminal convention:
+    /// Shift+PageUp/PageDown page through history and Shift+Home/End jump to
+    /// its ends, while the unshifted keys still reach the shell. Returns true
+    /// when the key was consumed as a scroll.
+    ///
+    /// Full-screen apps (vim, less, the agent TUIs) manage their own
+    /// scrollback, so on the alternate screen every key goes through.
+    fn term_scroll_key(&mut self, text: &str, mods: &Mods) -> bool {
+        if !mods.shift || mods.ctrl || mods.alt {
+            return false;
+        }
+        let Some(key) = text.chars().next() else { return false };
+        let scroll = match key {
+            keys::K_PAGE_UP => Scroll::PageUp,
+            keys::K_PAGE_DOWN => Scroll::PageDown,
+            keys::K_HOME => Scroll::Top,
+            keys::K_END => Scroll::Bottom,
+            // Shift+arrows scroll a line at a time.
+            keys::K_UP => Scroll::Delta(1),
+            keys::K_DOWN => Scroll::Delta(-1),
+            _ => return false,
+        };
+        let Some(handle) = self.sessions.get(self.active).and_then(Session::active_term)
+        else {
+            return false;
+        };
+        {
+            let mut term = handle.term.term.lock();
+            if term.mode().contains(TermMode::ALT_SCREEN) {
+                return false;
+            }
+            term.scroll_display(scroll);
+        }
+        self.render_term();
+        true
     }
 
     pub fn term_wheel(&mut self, delta: f32) {

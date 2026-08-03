@@ -126,7 +126,8 @@ The Changes list is mirrored to remote clients too — the **Changes** button in
 
 | Context  | Keys |
 |----------|------|
-| Terminal | everything a terminal expects: Ctrl+C/Z/D/R…, arrows, F1–F12, TUIs; drag to select (double-click = word), Cmd+C copies, Cmd+V pastes (bracketed); wheel scrolls history |
+| Terminal | everything a terminal expects: Ctrl+C/Z/D/R…, arrows, F1–F12, TUIs; drag to select (double-click = word), Cmd+C copies, Cmd+V pastes (bracketed) |
+| Scrollback | wheel scrolls; **Shift+PageUp/PageDown** page through history, **Shift+Home/End** jump to its ends, **Shift+↑/↓** move a line. Unshifted keys still reach the shell, and full-screen apps (vim, less, agent TUIs) keep their own scrolling. Typing jumps back to the live edge. Same keys work in the browser. |
 | Editor   | typing, arrows / Home / End / PgUp / PgDn (+Shift selects, +Alt jumps words), Cmd+A / C / X / V, Cmd+S saves |
 
 ## Configuration

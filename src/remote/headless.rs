@@ -337,7 +337,7 @@ impl RemoteHost for HeadlessHost {
 }
 
 /// Entry point for `tigridenr --headless`. Blocks forever.
-pub fn run(config: Config, port: u16) -> ! {
+pub fn run(config: Config, port: u16, folders: Vec<PathBuf>) -> ! {
     let (events_tx, events_rx) = channel::<Event>();
 
     let mut manager = Manager {
@@ -351,14 +351,21 @@ pub fn run(config: Config, port: u16) -> ! {
         events: events_tx.clone(),
         hub: None,
     };
-    // Restore the same folders the GUI would.
-    let state = crate::config::load_state();
-    for folder in &state.folders {
+    // Folders from the command line, else the ones the GUI last had open.
+    for folder in &folders {
         if folder.is_dir() {
             manager.add_session(folder.clone());
+        } else {
+            eprintln!("tigridenr: not a folder, skipping: {}", folder.display());
         }
     }
-    manager.active = state.active.min(manager.sessions.len().saturating_sub(1));
+    if manager.sessions.is_empty() {
+        eprintln!(
+            "tigridenr: no folders to serve — pass one on the command line, \
+             e.g. `tigridenr --headless ~/code/project`"
+        );
+    }
+    manager.active = 0;
     let manager = Arc::new(Mutex::new(manager));
 
     let host = Arc::new(HeadlessHost { manager: manager.clone() });

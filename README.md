@@ -48,11 +48,13 @@ The desktop app and every browser client share the **same live shells** — it's
 3. **Headless** — no window, no display needed (a Mac mini in a closet, over SSH):
 
    ```sh
-   tigridenr --headless             # serves the folders from your last session
-   tigridenr --headless --port 9000
+   tigridenr --headless ~/code/project         # serve one folder
+   tigridenr --headless ~/code/a ~/code/b      # several, as separate sessions
+   tigridenr --headless --port 9000 ~/code/x   # on a specific port
+   tigridenr --headless                        # folders from your last GUI session
    ```
 
-   In headless mode the *browser* drives the terminal size — rotate your phone and the PTY follows. When the desktop GUI is running, its pane owns the grid and browsers mirror it.
+   `tigridenr --help` lists every flag. In headless mode the *browser* drives the terminal size — rotate your phone and the PTY follows. When the desktop GUI is running, its pane owns the grid and browsers mirror it. Change tracking is always on headless, so the Changes list works from the first connection.
 
 **Security = Tailscale, by design.** The server never binds anything but `127.0.0.1`. Reachability comes exclusively from `tailscale serve`, which publishes it at `https://<machine>.<tailnet>.ts.net` with a real TLS certificate, admitting only devices logged into your tailnet (install the Tailscale app on your phone, same account, done). Disabling remote access tears the serve config down and stops the server. There is no separate password — access control *is* your tailnet, and anyone who can open the page has full shell access as your user, so treat tailnet membership accordingly. No Tailscale? The server still runs, but only reachable on the machine itself (`http://127.0.0.1:<port>`).
 
@@ -167,7 +169,7 @@ enabled = false
 port = 8620
 ```
 
-Runtime state (restored folders, split position) lives next to it in `state.toml`; shadow snapshots live in `snapshots/`. CLI flags: `--headless`, `--port N`, `--no-remote`. Note: toggling remote access from the app re-writes `config.toml`, so hand-added comments are lost.
+Runtime state (restored folders, split position) lives next to it in `state.toml`; shadow snapshots live in `snapshots/`. CLI: `tigridenr [--headless] [--port N] [--no-remote] [FOLDER...]` (see `--help`). Note: toggling remote access from the app re-writes `config.toml`, so hand-added comments are lost.
 
 ## Architecture
 

@@ -208,28 +208,57 @@ fn main() {
         eprintln!("tigridenr: config.toml is malformed; using defaults (file left untouched)");
     }
 
-    // Hand-rolled flags: --headless [--port N] runs the remote server with no
-    // window (and no Slint/winit init, so it works over SSH); --no-remote
-    // forces the server off for this GUI launch; --port overrides the config.
+    // Hand-rolled flags: --headless [--port N] [FOLDER...] runs the remote
+    // server with no window (and no Slint/winit init, so it works over SSH);
+    // --no-remote forces the server off for this GUI launch; --port overrides
+    // the config. Bare arguments are folders to open.
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let headless = args.iter().any(|a| a == "--headless");
-    let no_remote = args.iter().any(|a| a == "--no-remote");
-    if let Some(port) = args
-        .windows(2)
-        .find(|w| w[0] == "--port")
-        .and_then(|w| w[1].parse::<u16>().ok())
-    {
-        config.remote.port = port;
+    let mut headless = false;
+    let mut no_remote = false;
+    let mut folders: Vec<PathBuf> = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--headless" => headless = true,
+            "--no-remote" => no_remote = true,
+            "--port" => {
+                if let Some(port) = iter.next().and_then(|v| v.parse::<u16>().ok()) {
+                    config.remote.port = port;
+                }
+            }
+            "-h" | "--help" => {
+                println!(
+                    "TigridenR {}\n\n\
+                     USAGE:\n    tigridenr [OPTIONS] [FOLDER...]\n\n\
+                     OPTIONS:\n\
+                     \x20   --headless      Serve the web UI with no window (works over SSH)\n\
+                     \x20   --port <PORT>   Port to serve on (default from config.toml)\n\
+                     \x20   --no-remote     Start the GUI with remote access off\n\
+                     \x20   -h, --help      Show this help\n\n\
+                     FOLDER...  Folders to open. Without any, the folders from the\n\
+                     \x20          last session are restored.\n",
+                    env!("CARGO_PKG_VERSION")
+                );
+                return;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("tigridenr: unknown option {other} (try --help)");
+                std::process::exit(2);
+            }
+            path => folders.push(PathBuf::from(path)),
+        }
     }
     if no_remote {
         config.remote.enabled = false;
     }
+    // Explicit folders win over the restored session.
+    let state_folders = if folders.is_empty() { state.folders.clone() } else { folders.clone() };
 
     if headless {
         #[cfg(feature = "remote")]
         {
             let port = config.remote.port;
-            remote::headless::run(config, port);
+            remote::headless::run(config, port, state_folders);
         }
         #[cfg(not(feature = "remote"))]
         {
@@ -244,7 +273,7 @@ fn main() {
         state.recent_folders.clone(),
         WindowOpts {
             team: None,
-            initial_folders: state.folders.clone(),
+            initial_folders: state_folders.clone(),
             is_primary: true,
             split_ratio: state.split_ratio,
             restore_active: state.active,

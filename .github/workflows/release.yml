@@ -143,5 +143,9 @@ jobs:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           ls -la artifacts
+          # First tag push lands here with no release yet; create it then.
+          gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --generate-notes \
+                 --repo "${{ github.repository }}"
           gh release upload "$TAG" artifacts/* --clobber \
             --repo "${{ github.repository }}"

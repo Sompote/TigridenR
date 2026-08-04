@@ -1,6 +1,6 @@
 # TigridenR — the tiny agentic workbench you can run from anywhere
 
-![Version](https://img.shields.io/badge/version-0.1.1-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+![Version](https://img.shields.io/badge/version-0.1.2-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 
 **A tiny workbench for supervising AI coding agents — on your desk, and in your pocket.**
 
@@ -145,7 +145,7 @@ Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.
 
 ## Install
 
-No Rust needed — prebuilt binaries for every platform are on the [latest release](https://github.com/Sompote/TigridenR/releases/latest) (currently [v0.1.1](https://github.com/Sompote/TigridenR/releases/tag/v0.1.1)).
+No Rust needed — prebuilt binaries for every platform are on the [latest release](https://github.com/Sompote/TigridenR/releases/latest) (currently [v0.1.2](https://github.com/Sompote/TigridenR/releases/tag/v0.1.2)).
 
 | Download | For |
 |---|---|

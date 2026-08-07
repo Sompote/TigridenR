@@ -279,6 +279,35 @@ body { font: var(--font); color: var(--text); -webkit-text-size-adjust: 100%; }
 }
 #confirm-ok { background: var(--accent); border-color: var(--accent); color: #1e2227; font-weight: 600; }
 #confirm button:hover { filter: brightness(1.12); }
+/* ---- right-click menu (terminal and file viewer) ---- */
+#ctxmenu {
+  position: absolute;
+  z-index: 40;
+  min-width: 148px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+#ctxmenu.hidden { display: none; }
+#ctxmenu button {
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  font: var(--font);
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+#ctxmenu button:hover:not(:disabled) { background: var(--panel-hover); }
+/* Copy greys out with nothing selected, as on the desktop. */
+#ctxmenu button:disabled { color: var(--text-dim); cursor: default; }
+#ctxmenu button.hidden { display: none; }
+
 .divider { width: 1px; height: 18px; background: var(--border); margin: 0 4px; flex: none; }
 #presets { display: flex; gap: 4px; }
 .preset {

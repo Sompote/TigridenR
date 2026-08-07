@@ -164,6 +164,123 @@
     if (currentTerm) send({ t: 'input', term: currentTerm, data: data });
   });
 
+  // ---- selecting and copying ----
+  //
+  // xterm.js draws its own selection rather than the browser's, so nothing
+  // copies it for us: without this, text picked out in the web terminal could
+  // not leave the page at all. The desktop gates copy/paste on Cmd alone and
+  // lets plain Ctrl+C through as SIGINT — never steal that, or there is no way
+  // to interrupt an agent. Non-Mac keyboards get Ctrl+Shift+C/V/A instead.
+  var isMac = /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
+
+  // navigator.clipboard exists only in a secure context. Reached over plain
+  // http on a tailnet IP it is undefined, so fall back to execCommand.
+  function copyText(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () { legacyCopy(text); });
+    } else {
+      legacyCopy(text);
+    }
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    // Off-screen but still focusable — execCommand ignores hidden nodes.
+    ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) { /* nothing else to try */ }
+    document.body.removeChild(ta);
+    term.focus();
+  }
+
+  function pasteInto(text) {
+    if (text && currentTerm) send({ t: 'input', term: currentTerm, data: text });
+  }
+
+  function copySelection() {
+    if (term.hasSelection()) copyText(term.getSelection());
+  }
+
+  // Runs before xterm encodes the key, so returning false keeps it off the PTY.
+  term.attachCustomKeyEventHandler(function (ev) {
+    if (ev.type !== 'keydown') return true;
+    var accel = isMac ? (ev.metaKey && !ev.ctrlKey) : (ev.ctrlKey && ev.shiftKey);
+    if (!accel || ev.altKey) return true;
+    var key = ev.key.toLowerCase();
+    if (key === 'c' && term.hasSelection()) { copySelection(); return false; }
+    if (key === 'a') { term.selectAll(); return false; }
+    // Cmd+V is left to the browser: xterm's textarea gets a real paste event,
+    // which carries the clipboard without needing read permission.
+    return true;
+  });
+
+  // ---- right-click menu ----
+
+  var ctxmenu = $('ctxmenu');
+  var ctxTarget = null;   // 'term' or 'file'
+
+  function closeCtxMenu() { ctxmenu.classList.add('hidden'); ctxTarget = null; }
+
+  function fileSelection() {
+    var sel = window.getSelection();
+    return sel && !sel.isCollapsed ? sel.toString() : '';
+  }
+
+  function openCtxMenu(ev, target) {
+    // No preventDefault on the selection itself: the click must not collapse
+    // what the menu is about to act on.
+    ev.preventDefault();
+    ctxTarget = target;
+    var hasSel = target === 'term' ? term.hasSelection() : !!fileSelection();
+    ctxmenu.querySelector('[data-act="copy"]').disabled = !hasSel;
+    // The file viewer is read-only, so Paste does not belong there.
+    ctxmenu.querySelector('[data-act="paste"]').classList.toggle('hidden', target !== 'term');
+    ctxmenu.classList.remove('hidden');
+    // Place it inside the viewport, flipping at the right/bottom edges.
+    var r = ctxmenu.getBoundingClientRect();
+    var x = Math.min(ev.clientX, window.innerWidth - r.width - 6);
+    var y = Math.min(ev.clientY, window.innerHeight - r.height - 6);
+    ctxmenu.style.left = Math.max(6, x) + 'px';
+    ctxmenu.style.top = Math.max(6, y) + 'px';
+  }
+
+  ctxmenu.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+  ctxmenu.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('button');
+    if (!btn || btn.disabled) return;
+    var act = btn.dataset.act, target = ctxTarget;
+    closeCtxMenu();
+    if (act === 'copy') {
+      copyText(target === 'term' ? term.getSelection() : fileSelection());
+    } else if (act === 'all') {
+      if (target === 'term') { term.selectAll(); term.focus(); }
+      else {
+        var sel = window.getSelection(), range = document.createRange();
+        range.selectNodeContents($('file-content'));
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } else if (act === 'paste') {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(pasteInto).catch(function () {});
+      }
+      term.focus();
+    }
+  });
+
+  $('term-wrap').addEventListener('contextmenu', function (ev) { openCtxMenu(ev, 'term'); });
+  $('file-content').addEventListener('contextmenu', function (ev) { openCtxMenu(ev, 'file'); });
+  document.addEventListener('mousedown', function (ev) {
+    if (!ctxmenu.classList.contains('hidden') && !ctxmenu.contains(ev.target)) closeCtxMenu();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') closeCtxMenu();
+  });
+  window.addEventListener('blur', closeCtxMenu);
+
   // ---- scrollback on touch screens ----
   //
   // xterm.js has no touch handling of its own, so on a phone there is no way

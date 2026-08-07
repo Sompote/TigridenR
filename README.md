@@ -1,10 +1,10 @@
 # TigridenR — the tiny agentic workbench you can run from anywhere
 
-![Version](https://img.shields.io/badge/version-0.1.3-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+![Version](https://img.shields.io/badge/version-0.1.4-e8912d) ![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 
 **A tiny workbench for supervising AI coding agents — on your desk, and in your pocket.**
 
-Run `claude`, `codex`, `gemini` — any terminal agent — each in its own folder, side by side. Every workspace gets an embedded terminal, a live file tree, a lightweight editor, and change tracking with one-click rollback. Then leave the desk: **TigridenR mirrors the whole workbench to a web page**, so you can watch an agent think, answer its questions, and kick off the next task from your phone on the couch — or from anywhere on your [Tailscale](https://tailscale.com) network.
+Run `claude`, `codex`, `gemini`, `opencode` — any terminal agent — each in its own folder, side by side. Every workspace gets an embedded terminal, a live file tree, a lightweight editor, and change tracking with one-click rollback. Then leave the desk: **TigridenR mirrors the whole workbench to a web page**, so you can watch an agent think, answer its questions, and kick off the next task from your phone on the couch — or from anywhere on your [Tailscale](https://tailscale.com) network.
 
 No run/debug tooling, no chat panel, no LSP. The agents do the heavy lifting; TigridenR gives you eyes and hands — local or remote.
 
@@ -28,8 +28,9 @@ The desktop app and every browser client share the **same live shells** — it's
 **What the web page gives you** (it mirrors your desktop theme, accent and font — change them in Settings and the browser follows):
 
 - The **terminal** (xterm.js) with full TUI support — attaching mid-`vim` or mid-agent-session replays the current screen (plus up to 2,000 lines of recent scrollback) straight from the terminal grid, so you never land on a blank page.
+- **Select and copy** — drag to select, then Cmd+C (Ctrl+Shift+C on a PC keyboard) or **right-click ▸ Copy / Paste / Select All**, the same menu as the desktop. Plain Ctrl+C is never intercepted, so it still interrupts a running agent. The file reader copies with the browser's own selection.
 - The **agent sidebar** — your folders and their browseable file trees (tap to expand/collapse), the live **Changes (N)** list of what the agent touched (with a toggle button), and a **tap-to-view file reader**: tap any file to read its contents full-screen (text files, capped at 512 KB; viewing only — editing stays on the desktop).
-- **Terminal tabs and preset buttons** — switch folders and shells, open or close terminals, and launch `claude`/`codex`/`gemini` with one tap.
+- **Terminal tabs and preset buttons** — switch folders and shells, open or close terminals, and launch `claude`/`codex`/`gemini`/`opencode` with one tap.
 - **Attach a file to the agent** — drag a screenshot onto the page (or tap **📎** on a phone to pick from the photo library, camera or Files; pasting an image works too). The browser has no access to a real path — and is usually on another machine anyway — so the file is copied to the host and *its* path is typed into the terminal, shell-quoted, exactly like a desktop drag-and-drop. Uploads land in `~/Library/Application Support/tigridenr/uploads/`, outside your project folders, so they never show up in the file tree or the Changes panel. 25 MB per file.
 - A **phone-friendly layout** — drawer sidebar, soft-keyboard button, a ⟳ resync button, and font auto-fit to the host's grid width.
 
@@ -108,7 +109,7 @@ Open that on the phone. The name is read from `tailscale status` at runtime — 
 
 **4. Optional but recommended: enable HTTPS**
 
-By default you get `http://` over the tailnet — traffic is still encrypted by WireGuard, but browsers treat it as insecure, which blocks clipboard access and "Add to Home Screen".
+By default you get `http://` over the tailnet — traffic is still encrypted by WireGuard, but browsers treat it as insecure, which withholds the clipboard API and "Add to Home Screen". Copying out still works (it falls back to the old `execCommand` path); it is **Paste** from the right-click menu that needs a secure context — Cmd+V into the terminal works either way.
 
 To get a real `https://` address, open [**admin console ▸ DNS**](https://login.tailscale.com/admin/dns) and click **Enable HTTPS Certificates**. Then toggle Remote Access off and on; TigridenR notices the certificates and switches to `https://` automatically.
 
@@ -131,21 +132,21 @@ Everything the page needs (HTML/CSS/JS and a vendored [xterm.js](https://github.
 
 ## Features (the local half)
 
-- **One-click agents** — preset buttons type the agent command into the terminal for you (fully configurable).
+- **One-click agents** — preset buttons type the agent command into the terminal for you (`claude`, `codex`, `gemini`, `opencode` out of the box, fully configurable).
 - **Multiple terminals per folder** — the `+` tab spawns extra shells in the same workspace, so one agent can run while you use a second terminal for git, tests, or another agent. Tabs are switch-only; closing has its own **✕** button beside **+** and always asks first, so a mis-click can't kill a running agent.
-- **Real terminal** — VTE-compliant emulation ([alacritty_terminal](https://crates.io/crates/alacritty_terminal) + a real PTY). TUIs like `vim`, `top`, and the Claude Code interface just work, including bracketed paste and truecolor. Select with the mouse and Cmd+C to copy out; Cmd+V pastes text in, and image paste into Claude Code works with Ctrl+V (the agent reads your clipboard directly).
+- **Real terminal** — VTE-compliant emulation ([alacritty_terminal](https://crates.io/crates/alacritty_terminal) + a real PTY). TUIs like `vim`, `top`, and the Claude Code interface just work, including bracketed paste and truecolor. Select with the mouse and Cmd+C to copy out; Cmd+V pastes text in, and image paste into Claude Code works with Ctrl+V (the agent reads your clipboard directly). **Right-click for Copy / Paste / Select All**, and the **wheel scrolls inside full-screen apps** as well as through history.
 - **Live file tree** — gitignore-aware, refreshes automatically as agents create and delete files. Right-click any entry for New File/Folder, Reveal in Finder, Open in Default App, Copy (Relative) Path, Duplicate, Rename, and Move to Trash.
 - **File change tracking & rollback** — **File ▸ Show Changes Panel** lists every file the agent modified/added/deleted since the baseline, updated within ~1 s. Click a row for a syntax-highlighted diff; discard one file or the whole run, always behind a confirmation. Git folders compare against the last commit; folders **without git get invisible shadow snapshots** (stored in the app's data dir — your folder stays untouched, the agent never sees them).
 - **Multiple windows & agent teams** — **File ▸ New Window** opens an independent window with its own folders. Define named preset groups (`[[teams]]` in config.toml) to give different windows different agent buttons.
 - **Drag & drop files** — drop any file from Finder and its (shell-quoted) path is typed into the terminal — attach files to an agent prompt like in a native terminal.
 - **Built-in editor** — syntax highlighting for 40+ languages ([cosmic-text](https://crates.io/crates/cosmic-text) + syntect), Cmd+S save, auto-reload when the agent edits the open file.
-- **File viewers** — images, rendered Markdown, CSV/TSV tables, PDF text extraction.
+- **File viewers** — images, rendered Markdown (headings, code blocks, inline pictures, real tables), CSV/TSV as an aligned table, and **PDFs shown as actual pages** (text extraction as the fallback). Pages rasterize and images decode on background worker threads with the next page prefetched, so scrolling and zooming never stall the UI. **Select and copy text anywhere in the viewer** — including straight off rendered PDF pages, where a text layer built from the page's own content stream puts the highlight on the glyphs and reads two-column papers one column at a time. Zoom with Cmd+= / Cmd+- / Cmd+0 or Ctrl/Cmd+wheel, and navigate with the right-edge scrollbar, PageUp/PageDown, Home/End and ↑/↓.
 - **Settings dialog** (⌘,) — theme (Dark/Light × Classic/Minimal/Vivid), accent color, terminal/editor font and size, interface text size, scrollback (see [memory use](#memory-use)), the Changes-panel default, and remote access (on/off + port). Appearance changes apply live to every open window and are saved to config.toml; the web client picks them up too.
 - **Per-folder sessions, recent folders, native menu bar, persistent layout** — and small on purpose: no webview, no Electron, no C regex libraries.
 
 ## Install
 
-No Rust needed — prebuilt binaries for every platform are on the [latest release](https://github.com/Sompote/TigridenR/releases/latest) (currently [v0.1.3](https://github.com/Sompote/TigridenR/releases/tag/v0.1.3)).
+No Rust needed — prebuilt binaries for every platform are on the [latest release](https://github.com/Sompote/TigridenR/releases/latest) (currently [v0.1.4](https://github.com/Sompote/TigridenR/releases/tag/v0.1.4)).
 
 | Download | For |
 |---|---|
@@ -212,7 +213,7 @@ tigridenr --help                # every flag
 ```
 
 1. **+ Add folder** (⌘O) and pick a project — a login shell opens there.
-2. Click **claude** / **codex** / **gemini** to launch an agent, or type any command.
+2. Click **claude** / **codex** / **gemini** / **opencode** to launch an agent, or type any command.
 3. **⌘,** ▸ **Remote Access ▸ On** to get a URL you can open on your phone.
 
 <details>
@@ -254,9 +255,11 @@ The Changes list is mirrored to remote clients too — the **Changes** button in
 
 | Context  | Keys |
 |----------|------|
-| Terminal | everything a terminal expects: Ctrl+C/Z/D/R…, arrows, F1–F12, TUIs; drag to select (double-click = word), Cmd+C copies, Cmd+V pastes (bracketed) |
-| Scrollback | wheel scrolls; **Shift+PageUp/PageDown** page through history, **Shift+Home/End** jump to its ends, **Shift+↑/↓** move a line. Unshifted keys still reach the shell, and full-screen apps (vim, less, agent TUIs) keep their own scrolling. Typing jumps back to the live edge. Same keys work in the browser. |
-| Editor   | typing, arrows / Home / End / PgUp / PgDn (+Shift selects, +Alt jumps words), Cmd+A / C / X / V, Cmd+S saves |
+| Terminal | everything a terminal expects: Ctrl+C/Z/D/R…, arrows, F1–F12, TUIs; drag to select (double-click = word), Cmd+C copies, Cmd+V pastes (bracketed), **right-click for Copy / Paste / Select All** |
+| Scrollback | wheel scrolls — and now scrolls **inside full-screen apps** (Claude Code, vim, less) too; **Shift+PageUp/PageDown** page through history, **Shift+Home/End** jump to its ends, **Shift+↑/↓** move a line. Unshifted keys still reach the shell. Typing jumps back to the live edge. Same keys work in the browser. |
+| Editor   | typing, arrows / Home / End / PgUp / PgDn (+Shift selects, +Alt jumps words), Cmd+A / C / X / V, Cmd+S saves, right-click for Copy / Paste / Select All |
+| Viewer   | wheel scrolls, right-edge scrollbar drags or click-jumps, PgUp/PgDn page, Home/End jump to the ends, ↑/↓ step; drag to select text — including on PDF pages (double-click = word), Cmd+A selects all, Cmd+C / Cmd+X copy, Esc clears, right-click for the menu; Cmd+C with nothing selected copies a whole PDF; on images & PDFs: Cmd+= / Cmd+- zoom, Cmd+0 resets, Ctrl/Cmd+wheel zooms, and a zoomed view pans horizontally |
+| Browser  | the terminal keys above, plus Cmd+C copies and Cmd+A selects all (**Ctrl+Shift+C / Ctrl+Shift+A** on a PC keyboard — plain Ctrl+C stays SIGINT), right-click for Copy / Paste / Select All, and a one-finger vertical swipe scrolls scrollback on a phone |
 
 ## Memory use
 
@@ -314,6 +317,10 @@ command = "codex"
 label = "gemini"
 command = "gemini"
 
+[[presets]]
+label = "opencode"
+command = "opencode"
+
 # Optional: named preset groups for File ▸ New Window ▸ <team>.
 [[teams]]
 name = "reviewers"
@@ -328,6 +335,8 @@ send_enter = true
 enabled = false
 port = 8620
 ```
+
+When a release adds an agent button, a config still holding an older build's stock list picks it up once, recorded as `presets_version`. Add or remove a single preset and the list becomes yours: later releases leave it alone.
 
 Runtime state (restored folders, split position) lives next to it in `state.toml`; shadow snapshots live in `snapshots/`, and files attached from the web in `uploads/`. CLI: `tigridenr [--headless] [--port N] [--no-remote] [FOLDER...]` (see `--help`). Note: toggling remote access from the app re-writes `config.toml`, so hand-added comments are lost.
 
@@ -348,15 +357,22 @@ The remote layer (`src/remote/`, default-on `remote` feature) is a loopback-only
 
 ### Debug builds
 
-`cargo build --features framedump` enables the test hooks: `TIGRIDENR_DUMP=/tmp/frames` dumps both panes as PNGs, `TIGRIDENR_TEST_INPUT='claude\r'` and `TIGRIDENR_TEST_OPEN=path` script the first session, `TIGRIDENR_TEST_SETTINGS='style=vivid,font-size=16'` applies Settings edits through the real dialog callback, and `TIGRIDENR_TEST_SCROLL=1` exercises the scrollback keys and reports the viewport offset. `cargo test` covers the terminal key encoder, the theme table, and the remote snapshot/state layer.
+`cargo build --features framedump` enables the test hooks: `TIGRIDENR_DUMP=/tmp/frames` dumps both panes as PNGs, `TIGRIDENR_TEST_INPUT='claude\r'` and `TIGRIDENR_TEST_OPEN=path` script the first session, `TIGRIDENR_TEST_SETTINGS='style=vivid,font-size=16'` applies Settings edits through the real dialog callback, and `TIGRIDENR_TEST_SCROLL=1` exercises the scrollback keys and reports the viewport offset. `TIGRIDENR_TEST_CTXMENU=1` runs the right-click menu's Copy and Select All against the terminal and reports what reached the clipboard; `TIGRIDENR_TEST_SCROLLBACK=up|down` wheels the terminal and reports the mode, history size and resulting screen (the way to tell scrollback from alternate-screen scrolling); `TIGRIDENR_TEST_WHEEL_UI=1` dispatches a real scroll event through Slint's hit-testing, to prove wheel input still reaches the terminal. `cargo test` covers the terminal key encoder, the theme table, the viewer's selection and PDF text layer, and the remote snapshot/state layer.
+
+## Changelog
+
+- **0.1.4** — copying text, everywhere it was missing. **Select text in the viewer**: drag across Markdown paragraphs, code blocks, CSV tables and the glyphs of rendered PDF pages, double-click for a word, Cmd+A for all, Esc to clear, Cmd+C / Cmd+X to copy. PDF selection builds a real text layer from the same content stream the renderer draws, so highlights sit on the glyphs — on cropped and rotated pages too — and **two-column papers copy one column at a time** instead of zig-zagging across the gutter; Cmd+C with nothing selected still copies the whole document. **Right-click** the terminal, editor or viewer for **Copy / Paste / Select All** — Copy greys out with nothing selected, Paste is hidden on read-only views, and the right-click no longer clears the selection you just made. The **mouse wheel now scrolls inside full-screen apps**: TUIs run on the alternate screen, which keeps no scrollback of its own, so the wheel did nothing at all in Claude Code, vim or less; apps that asked for mouse reporting now get real wheel events at the pointer's cell, and the rest get arrow keys, xterm's alternate-scroll behaviour. In the browser, selecting terminal text now offers **Copy** and the same right-click menu. Plus an **opencode** preset button, which configs still carrying the stock three take on once.
+- **0.1.3** — viewer performance and polish: PDFs rasterize and images decode on background threads (scrolling and zooming no longer stall the UI), pages prefetch ahead of the scroll, wheel repaints are throttled; a scrollbar on the right of the viewer (draggable thumb, click-to-jump) plus PageUp/PageDown, Home/End and ↑/↓ keys; ⌘ detection for wheel zoom and shortcuts now reads the modifier state straight from the OS; scrollback limit changes apply to already-running terminals.
+- **0.1.2** — viewer zoom for images and PDFs (Cmd+=/-/0, Ctrl/Cmd+wheel, header magnifier buttons, panning), PDFs rendered as actual pages, and a web client that scrolls scrollback by touch with a jump-to-latest button.
+- **0.1.1** — Markdown tables drawn as real grids in the viewer, and install/packaging for all four released binaries.
+- **0.1.0** — first release: per-folder sessions with terminal, file tree, editor, viewers and presets; change tracking with rollback; multiple windows and agent teams; the Settings dialog (6 themes, accent, fonts, sizes, scrollback); terminal scrollback keys; and the whole remote half — web access over Tailscale, per-window ports, a themed browser client with file viewing and attachments, and a `--headless` server mode.
 
 ## Roadmap / known limitations (v1)
 
 - [ ] Editor undo
-- [ ] Mouse reporting to TUIs on the desktop (the web terminal already does it)
+- [ ] Click/drag mouse reporting to TUIs on the desktop (the wheel is reported since 0.1.4; the web terminal does all of it)
 - [ ] IME / dead-key composition
 - [ ] Editor tabs (currently one open file per session)
-- [ ] PDF page rendering (currently text extraction)
 - [ ] Linux / Windows testing
 - [ ] Web: file editing, diff viewer, and discard actions (currently terminal + file viewing)
 - [ ] Web: adding/removing folders remotely (folders come from the desktop or the last saved session)
